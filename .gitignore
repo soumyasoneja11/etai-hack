@@ -1,0 +1,17 @@
+.venv/
+etai_hack.egg-info/
+**/__pycache__/
+*.pyc
+
+# Large / regenerable
+data/processed/
+data/*.csv
+ingestion_detection/models/model.joblib
+ingestion_detection/models/baseline_profiles.json
+
+reports/api_schema_dump.json
+
+# Private local docs (not shared)
+docs/A_WORK_COMPLETED.md
+docs/guide for A.md
+docs/team plan.md

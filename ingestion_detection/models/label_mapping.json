@@ -1,0 +1,24 @@
+{
+  "label_to_id": {
+    "BENIGN": 0,
+    "Bot": 1,
+    "DDoS": 2,
+    "DoS GoldenEye": 3,
+    "DoS Hulk": 4,
+    "DoS Slowhttptest": 5,
+    "DoS slowloris": 6,
+    "Heartbleed": 7,
+    "PortScan": 8
+  },
+  "id_to_label": {
+    "0": "BENIGN",
+    "1": "Bot",
+    "2": "DDoS",
+    "3": "DoS GoldenEye",
+    "4": "DoS Hulk",
+    "5": "DoS Slowhttptest",
+    "6": "DoS slowloris",
+    "7": "Heartbleed",
+    "8": "PortScan"
+  }
+}

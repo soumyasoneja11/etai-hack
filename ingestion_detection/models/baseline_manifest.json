@@ -1,0 +1,23 @@
+{
+  "version": "1",
+  "built_at": "2026-07-06T13:23:17.975906Z",
+  "primary_scenario": "portscan",
+  "baseline_sources": [
+    {
+      "source_file": "Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv",
+      "row_range": [
+        0,
+        1463
+      ],
+      "label_filter": "BENIGN",
+      "rows_used": 1463
+    }
+  ],
+  "entity_count": 167,
+  "feature_count": 14,
+  "notes": [
+    "Baseline computed only from BENIGN rows before attack_start_row.",
+    "CICIDS2017 ISCX CSVs lack source IP — entity_id uses dst-{port}-win-{init_win}.",
+    "Entities with no baseline at scoring time receive anomaly_score=1.0 (high risk)."
+  ]
+}
