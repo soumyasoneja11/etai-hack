@@ -1,3 +1,4 @@
+.env
 .venv/
 etai_hack.egg-info/
 **/__pycache__/
