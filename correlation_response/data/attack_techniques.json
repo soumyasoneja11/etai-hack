@@ -1,181 +1,122 @@
-{
-  "T1046": {
-    "mitre_id": "T1046",
-    "technique": "Network Service Discovery",
+[
+  {
+    "technique_id": "T1046",
+    "name": "Network Service Discovery",
     "tactic": "Discovery",
-    "labels": ["PortScan"],
-    "description": "Scan network services to identify exposed ports and running services.",
-    "mitigation": "Restrict unnecessary ports, IDS/IPS, rate limiting."
+    "description": "Adversaries may attempt to get a listing of services running on remote hosts and local network infrastructure devices, including those that may be vulnerable to remote software exploitation."
   },
-
-  "T1595": {
-    "mitre_id": "T1595",
-    "technique": "Active Scanning",
+  {
+    "technique_id": "T1595",
+    "name": "Active Scanning",
     "tactic": "Reconnaissance",
-    "labels": ["PortScan"],
-    "description": "Probe hosts and services before intrusion.",
-    "mitigation": "Monitor reconnaissance traffic."
+    "description": "Adversaries may execute active reconnaissance scans to gather information that can be used during targeting, such as open ports, running services, or vulnerable software."
   },
-
-  "T1018": {
-    "mitre_id": "T1018",
-    "technique": "Remote System Discovery",
-    "tactic": "Discovery",
-    "labels": ["PortScan"],
-    "description": "Identify remote systems in a network.",
-    "mitigation": "Restrict unnecessary discovery protocols."
-  },
-
-  "T1049": {
-    "mitre_id": "T1049",
-    "technique": "System Network Connections Discovery",
-    "tactic": "Discovery",
-    "labels": ["PortScan"],
-    "description": "Discover active network connections.",
-    "mitigation": "Monitor unusual enumeration."
-  },
-
-  "T1498": {
-    "mitre_id": "T1498",
-    "technique": "Network Denial of Service",
+  {
+    "technique_id": "T1498",
+    "name": "Network Denial of Service",
     "tactic": "Impact",
-    "labels": ["DDoS"],
-    "description": "Flood network resources.",
-    "mitigation": "Enable DDoS protection."
+    "description": "Adversaries may perform Network Denial of Service (DoS) attacks to degrade or block the availability of targeted resources to users by saturating the network bandwidth."
   },
-
-  "T1499": {
-    "mitre_id": "T1499",
-    "technique": "Endpoint Denial of Service",
+  {
+    "technique_id": "T1499",
+    "name": "Endpoint Denial of Service",
     "tactic": "Impact",
-    "labels": ["DoS Hulk","DoS GoldenEye","DoS Slowhttptest","DoS slowloris"],
-    "description": "Exhaust endpoint resources.",
-    "mitigation": "WAF, reverse proxy, request throttling."
+    "description": "Adversaries may perform Endpoint Denial of Service (DoS) attacks to degrade or block the availability of services to users by exhausting system resources on the endpoint."
   },
-
-  "T1071": {
-    "mitre_id": "T1071",
-    "technique": "Application Layer Protocol",
+  {
+    "technique_id": "T1071",
+    "name": "Application Layer Protocol",
     "tactic": "Command and Control",
-    "labels": ["Bot"],
-    "description": "C2 communication using HTTP/HTTPS/DNS.",
-    "mitigation": "Block malicious outbound traffic."
+    "description": "Adversaries may communicate using OSI application layer protocols to avoid detection or network filtering, by blending in with existing traffic."
   },
-
-  "T1105": {
-    "mitre_id": "T1105",
-    "technique": "Ingress Tool Transfer",
-    "tactic": "Command and Control",
-    "labels": ["Bot"],
-    "description": "Transfer tools from C2 server.",
-    "mitigation": "Inspect outbound downloads."
-  },
-
-  "T1095": {
-    "mitre_id": "T1095",
-    "technique": "Non-Application Layer Protocol",
-    "tactic": "Command and Control",
-    "labels": ["Bot"],
-    "description": "Use raw sockets or custom protocols for C2.",
-    "mitigation": "Monitor anomalous protocols."
-  },
-
-  "T1571": {
-    "mitre_id": "T1571",
-    "technique": "Non-Standard Port",
-    "tactic": "Command and Control",
-    "labels": ["Bot"],
-    "description": "Communicate over uncommon ports.",
-    "mitigation": "Detect unexpected service ports."
-  },
-
-  "T1190": {
-    "mitre_id": "T1190",
-    "technique": "Exploit Public-Facing Application",
+  {
+    "technique_id": "T1190",
+    "name": "Exploit Public-Facing Application",
     "tactic": "Initial Access",
-    "labels": ["Heartbleed"],
-    "description": "Exploit exposed application vulnerabilities.",
-    "mitigation": "Patch vulnerable applications."
+    "description": "Adversaries may attempt to exploit a weakness in an Internet-facing host or system to initially access a network."
   },
-
-  "T1210": {
-    "mitre_id": "T1210",
-    "technique": "Exploitation of Remote Services",
-    "tactic": "Lateral Movement",
-    "labels": ["Heartbleed"],
-    "description": "Exploit remote services to move laterally.",
-    "mitigation": "Patch services and segment networks."
-  },
-
-  "T1557": {
-    "mitre_id": "T1557",
-    "technique": "Adversary-in-the-Middle",
-    "tactic": "Credential Access",
-    "labels": ["Heartbleed"],
-    "description": "Intercept network communication.",
-    "mitigation": "Use encrypted protocols."
-  },
-
-  "T1005": {
-    "mitre_id": "T1005",
-    "technique": "Data from Local System",
-    "tactic": "Collection",
-    "labels": ["Heartbleed"],
-    "description": "Collect sensitive local data.",
-    "mitigation": "Least privilege and endpoint monitoring."
-  },
-
-  "T1021": {
-    "mitre_id": "T1021",
-    "technique": "Remote Services",
-    "tactic": "Lateral Movement",
-    "labels": ["Bot"],
-    "description": "Move laterally using remote services.",
-    "mitigation": "Restrict remote administration."
-  },
-
-  "T1059": {
-    "mitre_id": "T1059",
-    "technique": "Command and Scripting Interpreter",
+  {
+    "technique_id": "T1059",
+    "name": "Command and Scripting Interpreter",
     "tactic": "Execution",
-    "labels": ["Bot"],
-    "description": "Execute commands via scripting engines.",
-    "mitigation": "Monitor PowerShell and scripting."
+    "description": "Adversaries may abuse command and script interpreters to execute commands, scripts, or binaries for payload delivery and further compromise."
   },
-
-  "T1082": {
-    "mitre_id": "T1082",
-    "technique": "System Information Discovery",
-    "tactic": "Discovery",
-    "labels": ["Bot","PortScan"],
-    "description": "Collect host information.",
-    "mitigation": "Detect abnormal enumeration."
+  {
+    "technique_id": "T1078",
+    "name": "Valid Accounts",
+    "tactic": "Persistence",
+    "description": "Adversaries may obtain and abuse credentials of existing accounts as a means of gaining Initial Access, Persistence, Privilege Escalation, or Defense Evasion."
   },
-
-  "T1033": {
-    "mitre_id": "T1033",
-    "technique": "System Owner/User Discovery",
-    "tactic": "Discovery",
-    "labels": ["Bot"],
-    "description": "Identify logged-in users.",
-    "mitigation": "Monitor account discovery."
+  {
+    "technique_id": "T1110",
+    "name": "Brute Force",
+    "tactic": "Credential Access",
+    "description": "Adversaries may use brute force techniques to gain access to accounts when passwords are unknown or when password hashes are obtained."
   },
-
-  "T1083": {
-    "mitre_id": "T1083",
-    "technique": "File and Directory Discovery",
-    "tactic": "Discovery",
-    "labels": ["Bot"],
-    "description": "Enumerate filesystem.",
-    "mitigation": "Monitor abnormal file enumeration."
+  {
+    "technique_id": "T1021",
+    "name": "Remote Services",
+    "tactic": "Lateral Movement",
+    "description": "Adversaries may use valid accounts to log into a service that accepts remote connections, such as SSH, RDP, or VNC, to move laterally within a network."
   },
-
-  "T1041": {
-    "mitre_id": "T1041",
-    "technique": "Exfiltration Over C2 Channel",
+  {
+    "technique_id": "T1048",
+    "name": "Exfiltration Over Alternative Protocol",
     "tactic": "Exfiltration",
-    "labels": ["Bot"],
-    "description": "Exfiltrate data through command-and-control channel.",
-    "mitigation": "Inspect outbound traffic and DLP."
+    "description": "Adversaries may steal data by exfiltrating it over a different protocol than that of the existing command and control channel."
+  },
+  {
+    "technique_id": "T1098",
+    "name": "Account Manipulation",
+    "tactic": "Persistence",
+    "description": "Adversaries may manipulate accounts to maintain and/or elevate access to victim systems, including modifying credentials or permissions."
+  },
+  {
+    "technique_id": "T1053",
+    "name": "Scheduled Task/Job",
+    "tactic": "Execution",
+    "description": "Adversaries may abuse task scheduling functionality to facilitate initial or recurring execution of malicious code."
+  },
+  {
+    "technique_id": "T1027",
+    "name": "Obfuscated Files or Information",
+    "tactic": "Defense Evasion",
+    "description": "Adversaries may attempt to make an executable or file difficult to discover or analyze by encrypting, encoding, or otherwise obfuscating its contents."
+  },
+  {
+    "technique_id": "T1570",
+    "name": "Lateral Tool Transfer",
+    "tactic": "Lateral Movement",
+    "description": "Adversaries may transfer tools or other files between systems in a compromised environment using lateral movement techniques."
+  },
+  {
+    "technique_id": "T1105",
+    "name": "Ingress Tool Transfer",
+    "tactic": "Command and Control",
+    "description": "Adversaries may transfer tools or other files from an external system into a compromised environment to facilitate follow-on actions."
+  },
+  {
+    "technique_id": "T1486",
+    "name": "Data Encrypted for Impact",
+    "tactic": "Impact",
+    "description": "Adversaries may encrypt data on target systems or on large numbers of systems in a network to interrupt availability to system and network resources (ransomware)."
+  },
+  {
+    "technique_id": "T1082",
+    "name": "System Information Discovery",
+    "tactic": "Discovery",
+    "description": "An adversary may attempt to get detailed information about the operating system and hardware, including version, patches, and architecture."
+  },
+  {
+    "technique_id": "T1133",
+    "name": "External Remote Services",
+    "tactic": "Initial Access",
+    "description": "Adversaries may leverage external-facing remote services to initially access and/or persist within a network, such as VPNs, Citrix, and other access mechanisms."
+  },
+  {
+    "technique_id": "T1583",
+    "name": "Acquire Infrastructure",
+    "tactic": "Reconnaissance",
+    "description": "Adversaries may buy, lease, rent, or obtain infrastructure that can be used during targeting, such as servers, domains, or third-party web services."
   }
-}
+]

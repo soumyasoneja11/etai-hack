@@ -1,143 +1,145 @@
 """
-Loads correlation_response/data/attack_techniques.json into Neo4j Aura as
-(:Technique) nodes with MITRE ATT&CK properties.
-
-Environment Variables:
-    NEO4J_URI         e.g. neo4j+s://<dbid>.databases.neo4j.io
-    NEO4J_USER        usually "neo4j"
-    NEO4J_PASSWORD
+Neo4j Aura graph loader — seed MITRE technique nodes and create asset relationships.
 
 Usage:
-    pip install neo4j
-    export NEO4J_URI=...
-    export NEO4J_USER=neo4j
-    export NEO4J_PASSWORD=...
-    python scripts/neo4j_loader.py
+  python -m correlation_response.graph.neo4j_loader          # seed techniques
+  python -m correlation_response.graph.neo4j_loader --clear   # wipe and reseed
 """
 
-import json
-import os
-from neo4j import GraphDatabase
+from __future__ import annotations
 
-DATA_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "data",
-    "attack_techniques.json"
-)
+import argparse
+import logging
+from typing import Any
 
-URI = os.environ["neo4j+s://ceb439b3.databases.neo4j.io"]
-USER = os.environ["ceb439b3"]
-PASSWORD = os.environ["GZW2CsZT33m-mWCokjUJ9IYCAzm4TAtZAjg5QCLlTU8"]
-
-TECHNIQUE_CONSTRAINT = """
-CREATE CONSTRAINT technique_mitre_unique IF NOT EXISTS
-FOR (t:Technique)
-REQUIRE t.mitre_id IS UNIQUE
-"""
-
-ASSET_CONSTRAINT = """
-CREATE CONSTRAINT asset_id_unique IF NOT EXISTS
-FOR (a:Asset)
-REQUIRE a.asset_id IS UNIQUE
-"""
-
-TECHNIQUE_UPSERT = """
-MERGE (t:Technique {mitre_id: $mitre_id})
-SET
-    t.name = $name,
-    t.tactic = $tactic,
-    t.description = $description,
-    t.mitigation = $mitigation
-"""
-
-ASSET_UPSERT = """
-MERGE (a:Asset {asset_id: $asset_id})
-ON CREATE SET
-    a.asset_type = "Unknown",
-    a.status = "Healthy",
-    a.criticality = "Medium"
-"""
-
-OBSERVED_ON_REL = """
-MATCH (t:Technique {mitre_id: $mitre_id})
-MATCH (a:Asset {asset_id: $asset_id})
-
-MERGE (t)-[r:OBSERVED_ON]->(a)
-
-ON CREATE SET
-    r.first_seen = $timestamp,
-    r.last_seen = $timestamp,
-    r.count = 1
-
-ON MATCH SET
-    r.last_seen = $timestamp,
-    r.count = coalesce(r.count, 0) + 1
-"""
+logger = logging.getLogger(__name__)
 
 
-def create_constraints(driver):
-    with driver.session() as session:
-        session.run(TECHNIQUE_CONSTRAINT)
-        session.run(ASSET_CONSTRAINT)
+def _get_driver():
+    """Create Neo4j driver from settings. Returns None if neo4j not available."""
+    try:
+        from neo4j import GraphDatabase
+    except ImportError:
+        logger.error("neo4j Python driver not installed. Run: pip install neo4j>=5.20")
+        return None
+
+    from correlation_response.config import settings
+
+    if not settings.neo4j_enabled:
+        logger.warning("Neo4j not configured (set CORR_NEO4J_URI and CORR_NEO4J_PASSWORD)")
+        return None
+
+    return GraphDatabase.driver(
+        settings.neo4j_uri,
+        auth=(settings.neo4j_user, settings.neo4j_password),
+    )
 
 
-def load_techniques(driver):
-    with open(DATA_PATH, "r") as f:
-        techniques = json.load(f)
+def seed_techniques(clear: bool = False) -> int:
+    """Load attack_techniques.json into Neo4j as (:Technique) nodes."""
+    from correlation_response.correlate import get_techniques
 
-    with driver.session() as session:
-        for mitre_id, info in techniques.items():
+    driver = _get_driver()
+    if driver is None:
+        return 1
+
+    techniques = get_techniques()
+    try:
+        with driver.session() as session:
+            if clear:
+                session.run("MATCH (t:Technique) DETACH DELETE t")
+                logger.info("Cleared existing Technique nodes")
+
+            for tech in techniques:
+                session.run(
+                    """
+                    MERGE (t:Technique {technique_id: $technique_id})
+                    SET t.name = $name,
+                        t.tactic = $tactic,
+                        t.description = $description
+                    """,
+                    technique_id=tech["technique_id"],
+                    name=tech["name"],
+                    tactic=tech["tactic"],
+                    description=tech["description"],
+                )
+
+            logger.info("Seeded %d Technique nodes in Neo4j", len(techniques))
+        return 0
+    except Exception as exc:
+        logger.error("Failed to seed techniques: %s", exc)
+        return 1
+    finally:
+        driver.close()
+
+
+def ensure_asset_node(asset_id: str) -> bool:
+    """Create or merge an (:Asset) node for the given asset_id."""
+    driver = _get_driver()
+    if driver is None:
+        return False
+
+    try:
+        with driver.session() as session:
             session.run(
-                TECHNIQUE_UPSERT,
-                mitre_id=mitre_id,
-                name=info.get("technique"),
-                tactic=info.get("tactic"),
-                description=info.get("description"),
-                mitigation=info.get("mitigation"),
+                "MERGE (a:Asset {asset_id: $asset_id})",
+                asset_id=asset_id,
             )
+        return True
+    except Exception as exc:
+        logger.error("Failed to create Asset node: %s", exc)
+        return False
+    finally:
+        driver.close()
 
-    print(f"Loaded {len(techniques)} Technique nodes into Neo4j Aura.")
 
+def create_exhibited_relationship(
+    asset_id: str,
+    technique_id: str,
+    *,
+    confidence: float = 0.0,
+    anomaly_id: str = "",
+) -> bool:
+    """Create (:Asset)-[:EXHIBITED]->(:Technique) relationship."""
+    driver = _get_driver()
+    if driver is None:
+        return False
 
-def upsert_asset_and_link(driver, mitre_id: str, asset_id: str, timestamp: str):
-    """
-    Creates Asset nodes lazily and links them to Technique nodes.
-
-    Example graph:
-
-        (Technique)-[:OBSERVED_ON]->(Asset)
-
-    Called whenever a detection is correlated.
-    """
-
-    with driver.session() as session:
-        session.run(
-            ASSET_UPSERT,
-            asset_id=asset_id
+    try:
+        with driver.session() as session:
+            session.run(
+                """
+                MERGE (a:Asset {asset_id: $asset_id})
+                MERGE (t:Technique {technique_id: $technique_id})
+                CREATE (a)-[:EXHIBITED {
+                    confidence: $confidence,
+                    anomaly_id: $anomaly_id
+                }]->(t)
+                """,
+                asset_id=asset_id,
+                technique_id=technique_id,
+                confidence=confidence,
+                anomaly_id=anomaly_id,
+            )
+        logger.info(
+            "Created EXHIBITED: %s -> %s (confidence=%.1f)",
+            asset_id, technique_id, confidence,
         )
+        return True
+    except Exception as exc:
+        logger.error("Failed to create relationship: %s", exc)
+        return False
+    finally:
+        driver.close()
 
-        session.run(
-            OBSERVED_ON_REL,
-            mitre_id=mitre_id,
-            asset_id=asset_id,
-            timestamp=timestamp
-        )
+
+def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    parser = argparse.ArgumentParser(description="Seed MITRE techniques into Neo4j Aura")
+    parser.add_argument("--clear", action="store_true", help="Delete existing Technique nodes first")
+    args = parser.parse_args(argv)
+    return seed_techniques(clear=args.clear)
 
 
 if __name__ == "__main__":
-    driver = GraphDatabase.driver(
-        URI,
-        auth=(USER, PASSWORD)
-    )
-
-    try:
-        driver.verify_connectivity()
-
-        create_constraints(driver)
-        load_techniques(driver)
-
-        print("Neo4j Aura initialized successfully.")
-
-    finally:
-        driver.close()
+    raise SystemExit(main())
