@@ -1,0 +1,181 @@
+{
+  "T1046": {
+    "mitre_id": "T1046",
+    "technique": "Network Service Discovery",
+    "tactic": "Discovery",
+    "labels": ["PortScan"],
+    "description": "Scan network services to identify exposed ports and running services.",
+    "mitigation": "Restrict unnecessary ports, IDS/IPS, rate limiting."
+  },
+
+  "T1595": {
+    "mitre_id": "T1595",
+    "technique": "Active Scanning",
+    "tactic": "Reconnaissance",
+    "labels": ["PortScan"],
+    "description": "Probe hosts and services before intrusion.",
+    "mitigation": "Monitor reconnaissance traffic."
+  },
+
+  "T1018": {
+    "mitre_id": "T1018",
+    "technique": "Remote System Discovery",
+    "tactic": "Discovery",
+    "labels": ["PortScan"],
+    "description": "Identify remote systems in a network.",
+    "mitigation": "Restrict unnecessary discovery protocols."
+  },
+
+  "T1049": {
+    "mitre_id": "T1049",
+    "technique": "System Network Connections Discovery",
+    "tactic": "Discovery",
+    "labels": ["PortScan"],
+    "description": "Discover active network connections.",
+    "mitigation": "Monitor unusual enumeration."
+  },
+
+  "T1498": {
+    "mitre_id": "T1498",
+    "technique": "Network Denial of Service",
+    "tactic": "Impact",
+    "labels": ["DDoS"],
+    "description": "Flood network resources.",
+    "mitigation": "Enable DDoS protection."
+  },
+
+  "T1499": {
+    "mitre_id": "T1499",
+    "technique": "Endpoint Denial of Service",
+    "tactic": "Impact",
+    "labels": ["DoS Hulk","DoS GoldenEye","DoS Slowhttptest","DoS slowloris"],
+    "description": "Exhaust endpoint resources.",
+    "mitigation": "WAF, reverse proxy, request throttling."
+  },
+
+  "T1071": {
+    "mitre_id": "T1071",
+    "technique": "Application Layer Protocol",
+    "tactic": "Command and Control",
+    "labels": ["Bot"],
+    "description": "C2 communication using HTTP/HTTPS/DNS.",
+    "mitigation": "Block malicious outbound traffic."
+  },
+
+  "T1105": {
+    "mitre_id": "T1105",
+    "technique": "Ingress Tool Transfer",
+    "tactic": "Command and Control",
+    "labels": ["Bot"],
+    "description": "Transfer tools from C2 server.",
+    "mitigation": "Inspect outbound downloads."
+  },
+
+  "T1095": {
+    "mitre_id": "T1095",
+    "technique": "Non-Application Layer Protocol",
+    "tactic": "Command and Control",
+    "labels": ["Bot"],
+    "description": "Use raw sockets or custom protocols for C2.",
+    "mitigation": "Monitor anomalous protocols."
+  },
+
+  "T1571": {
+    "mitre_id": "T1571",
+    "technique": "Non-Standard Port",
+    "tactic": "Command and Control",
+    "labels": ["Bot"],
+    "description": "Communicate over uncommon ports.",
+    "mitigation": "Detect unexpected service ports."
+  },
+
+  "T1190": {
+    "mitre_id": "T1190",
+    "technique": "Exploit Public-Facing Application",
+    "tactic": "Initial Access",
+    "labels": ["Heartbleed"],
+    "description": "Exploit exposed application vulnerabilities.",
+    "mitigation": "Patch vulnerable applications."
+  },
+
+  "T1210": {
+    "mitre_id": "T1210",
+    "technique": "Exploitation of Remote Services",
+    "tactic": "Lateral Movement",
+    "labels": ["Heartbleed"],
+    "description": "Exploit remote services to move laterally.",
+    "mitigation": "Patch services and segment networks."
+  },
+
+  "T1557": {
+    "mitre_id": "T1557",
+    "technique": "Adversary-in-the-Middle",
+    "tactic": "Credential Access",
+    "labels": ["Heartbleed"],
+    "description": "Intercept network communication.",
+    "mitigation": "Use encrypted protocols."
+  },
+
+  "T1005": {
+    "mitre_id": "T1005",
+    "technique": "Data from Local System",
+    "tactic": "Collection",
+    "labels": ["Heartbleed"],
+    "description": "Collect sensitive local data.",
+    "mitigation": "Least privilege and endpoint monitoring."
+  },
+
+  "T1021": {
+    "mitre_id": "T1021",
+    "technique": "Remote Services",
+    "tactic": "Lateral Movement",
+    "labels": ["Bot"],
+    "description": "Move laterally using remote services.",
+    "mitigation": "Restrict remote administration."
+  },
+
+  "T1059": {
+    "mitre_id": "T1059",
+    "technique": "Command and Scripting Interpreter",
+    "tactic": "Execution",
+    "labels": ["Bot"],
+    "description": "Execute commands via scripting engines.",
+    "mitigation": "Monitor PowerShell and scripting."
+  },
+
+  "T1082": {
+    "mitre_id": "T1082",
+    "technique": "System Information Discovery",
+    "tactic": "Discovery",
+    "labels": ["Bot","PortScan"],
+    "description": "Collect host information.",
+    "mitigation": "Detect abnormal enumeration."
+  },
+
+  "T1033": {
+    "mitre_id": "T1033",
+    "technique": "System Owner/User Discovery",
+    "tactic": "Discovery",
+    "labels": ["Bot"],
+    "description": "Identify logged-in users.",
+    "mitigation": "Monitor account discovery."
+  },
+
+  "T1083": {
+    "mitre_id": "T1083",
+    "technique": "File and Directory Discovery",
+    "tactic": "Discovery",
+    "labels": ["Bot"],
+    "description": "Enumerate filesystem.",
+    "mitigation": "Monitor abnormal file enumeration."
+  },
+
+  "T1041": {
+    "mitre_id": "T1041",
+    "technique": "Exfiltration Over C2 Channel",
+    "tactic": "Exfiltration",
+    "labels": ["Bot"],
+    "description": "Exfiltrate data through command-and-control channel.",
+    "mitigation": "Inspect outbound traffic and DLP."
+  }
+}
