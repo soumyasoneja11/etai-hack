@@ -155,8 +155,26 @@ B assigns `anomaly_id` and `status` (`new` initially). WebSocket `anomaly.create
 
 - `severity`: `low`, `medium`, `high`, `critical`
 - `anomaly_status`: `new`, `investigating`, `acknowledged`, `contained`, `false_positive`
+- `threat_posture`: `nominal`, `elevated`, `high`, `critical` — `/dashboard/summary`
+- `audit_agent`: `analyst`, `ml_engine`, `orchestrator` — `/audit-trail` (`analyst` = human SOC; not `human`/`user`)
 
-See [`shared/enums.py`](../shared/enums.py).
+See [`shared/enums.py`](../shared/enums.py). Full list: **Enums & Status Codes** sheet. `error.code` strings: **Error Responses** sheet.
+
+---
+
+## B-owned shapes (from Excel — latest)
+
+### `GET /attributions/{attribution_id}`
+
+Includes **`narrative`** (string) — AI-generated plain-English threat summary for the dashboard explain panel.
+
+### `GET /audit-trail`
+
+Each item includes **`actor_id`**, **`actor_name`** (specific analyst/system), plus **`agent`** (enum category).
+
+### Pagination
+
+`limit` and `offset` are **optional** (defaults: 20, 0). Omitting them returns **200** with the first page — not 400.
 
 ---
 
