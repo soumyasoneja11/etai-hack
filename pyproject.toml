@@ -19,15 +19,19 @@ dependencies = [
     "joblib>=1.4",
     "pyarrow>=18.0",
     "openpyxl>=3.1",
+    "neo4j>=5.20",
 ]
 
 [project.scripts]
 ingest-api = "ingestion_detection.main:run"
 replay = "ingestion_detection.replay.replay:main"
+correlation-api = "correlation_response.main:run"
+replay-correlate = "correlation_response.replay_to_correlate:main"
+neo4j-seed = "correlation_response.graph.neo4j_loader:main"
 
 [build-system]
 requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["ingestion_detection*", "shared*"]
+include = ["ingestion_detection*", "shared*", "correlation_response*"]
