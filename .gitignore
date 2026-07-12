@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-=======
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
@@ -33,9 +31,8 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-nv*
+.env*
 .env
->>>>>>> Stashed changes
 .venv/
 etai_hack.egg-info/
 **/__pycache__/
@@ -52,4 +49,9 @@ reports/api_schema_dump.json
 # Private local docs (not shared)
 docs/A_WORK_COMPLETED.md
 docs/guide for A.md
-docs/team plan.md
+docs/A_MODEL_DOCUMENTATION.md
+
+# frontend subfolder ignores
+/frontend/node_modules/
+/frontend/.next/
+/frontend/build/

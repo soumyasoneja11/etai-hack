@@ -1,0 +1,366 @@
+[
+  {
+    "doc_id": "CVE-2014-0160",
+    "type": "CVE",
+    "title": "OpenSSL Heartbleed — TLS Heartbeat Buffer Over-Read",
+    "description": "The TLS and DTLS implementations in OpenSSL 1.0.1 before 1.0.1g do not properly handle Heartbeat Extension packets, which allows remote attackers to obtain sensitive information from process memory via crafted packets that trigger a buffer over-read, as demonstrated by reading private keys (aka the Heartbleed bug).",
+    "severity": "critical",
+    "cvss_score": 7.5,
+    "cvss_vector": "AV:N/AC:L/Au:N/C:P/I:N/A:N",
+    "published_date": "2014-04-07",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2014-0160",
+    "affected_software": ["OpenSSL 1.0.1 through 1.0.1f"],
+    "attack_mapping": {
+      "cicids_label": "Heartbleed",
+      "mitre_technique_id": "T1190",
+      "mitre_tactic": "Initial Access"
+    },
+    "remediation": "Update OpenSSL to version 1.0.1g or later. Revoke and reissue all TLS/SSL certificates. Rotate all passwords and session tokens that may have been exposed. Monitor for anomalous memory-read patterns in TLS traffic.",
+    "cert_in_ref": "CIAD-2014-0076",
+    "tags": ["openssl", "heartbleed", "memory-leak", "tls", "buffer-over-read"]
+  },
+  {
+    "doc_id": "CVE-2014-0224",
+    "type": "CVE",
+    "title": "OpenSSL CCS Injection — Man-in-the-Middle via ChangeCipherSpec",
+    "description": "OpenSSL before 0.9.8za, 1.0.0 before 1.0.0m, and 1.0.1 before 1.0.1h does not properly restrict processing of ChangeCipherSpec messages, which allows man-in-the-middle attackers to trigger use of a zero-length master key in certain OpenSSL-to-OpenSSL communications, and consequently hijack sessions or obtain sensitive information.",
+    "severity": "high",
+    "cvss_score": 7.4,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N",
+    "published_date": "2014-06-05",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2014-0224",
+    "affected_software": ["OpenSSL before 0.9.8za", "OpenSSL 1.0.0 before 1.0.0m", "OpenSSL 1.0.1 before 1.0.1h"],
+    "attack_mapping": {
+      "cicids_label": "Heartbleed",
+      "mitre_technique_id": "T1190",
+      "mitre_tactic": "Initial Access"
+    },
+    "remediation": "Update OpenSSL to 0.9.8za, 1.0.0m, or 1.0.1h. Both client and server must be patched. Enforce TLS 1.2+ where possible.",
+    "cert_in_ref": null,
+    "tags": ["openssl", "ccs-injection", "mitm", "tls", "session-hijack"]
+  },
+  {
+    "doc_id": "CIAD-2014-0076",
+    "type": "CERT-In",
+    "title": "CERT-In Advisory on Heartbleed Vulnerability in OpenSSL",
+    "description": "CERT-In advisory regarding the critical Heartbleed vulnerability (CVE-2014-0160) in OpenSSL affecting Indian government and private sector infrastructure. The advisory details the vulnerability's impact on TLS-enabled services and provides patching guidance for affected systems.",
+    "severity": "critical",
+    "cvss_score": null,
+    "cvss_vector": null,
+    "published_date": "2014-04-09",
+    "source_url": "https://www.cert-in.org.in/",
+    "affected_software": ["OpenSSL 1.0.1 through 1.0.1f"],
+    "attack_mapping": {
+      "cicids_label": "Heartbleed",
+      "mitre_technique_id": "T1190",
+      "mitre_tactic": "Initial Access"
+    },
+    "remediation": "Immediately patch all OpenSSL instances to 1.0.1g+. Revoke and reissue digital certificates. Report incidents to CERT-In within 6 hours as per IT Act directives. Conduct internal audit of exposed services.",
+    "cert_in_ref": "CIAD-2014-0076",
+    "tags": ["cert-in", "heartbleed", "openssl", "india", "advisory"]
+  },
+
+  {
+    "doc_id": "CVE-2018-5390",
+    "type": "CVE",
+    "title": "Linux Kernel SegmentSmack — TCP Reassembly CPU Exhaustion DoS",
+    "description": "Linux kernel versions 4.9+ can be forced to make very expensive calls to tcp_collapse_ofo_queue() and tcp_prune_ofo_queue() for every incoming packet, which can lead to a denial of service. An attacker can induce a denial of service condition by sending specially modified packets within ongoing TCP sessions.",
+    "severity": "high",
+    "cvss_score": 7.5,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+    "published_date": "2018-08-06",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2018-5390",
+    "affected_software": ["Linux Kernel 4.9+"],
+    "attack_mapping": {
+      "cicids_label": "DDoS",
+      "mitre_technique_id": "T1498",
+      "mitre_tactic": "Impact"
+    },
+    "remediation": "Apply kernel patches from Linux distributions. Implement rate limiting and traffic filtering at network perimeter. Deploy DDoS mitigation appliances for high-volume attack scenarios.",
+    "cert_in_ref": null,
+    "tags": ["linux", "kernel", "tcp", "segmentsmack", "cpu-exhaustion", "ddos"]
+  },
+  {
+    "doc_id": "CVE-2019-11477",
+    "type": "CVE",
+    "title": "Linux Kernel SACK Panic — TCP Selective Acknowledgment Remote DoS",
+    "description": "Jonathan Looney discovered that the TCP_SKB_CB(skb)->tcp_gso_segs value was subject to an integer overflow in the Linux kernel when handling TCP Selective Acknowledgments (SACKs). A remote attacker could use this to cause a denial of service (system crash).",
+    "severity": "critical",
+    "cvss_score": 7.5,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+    "published_date": "2019-06-19",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2019-11477",
+    "affected_software": ["Linux Kernel 2.6.29+"],
+    "attack_mapping": {
+      "cicids_label": "DDoS",
+      "mitre_technique_id": "T1498",
+      "mitre_tactic": "Impact"
+    },
+    "remediation": "Apply kernel patches. As a workaround, disable TCP SACK processing via sysctl (net.ipv4.tcp_sack=0). Deploy upstream DDoS scrubbing and network-level rate limiting.",
+    "cert_in_ref": null,
+    "tags": ["linux", "kernel", "tcp-sack", "panic", "integer-overflow", "ddos"]
+  },
+  {
+    "doc_id": "CIAD-2023-0040",
+    "type": "CERT-In",
+    "title": "CERT-In Advisory on DDoS Attack Campaigns Targeting Indian Infrastructure",
+    "description": "CERT-In advisory warning about organized DDoS attack campaigns targeting Indian government websites and critical ICT infrastructure. Hacktivist groups employ web-based DDoS attacks using UDP/SYN floods, often sourcing traffic through compromised cloud servers and unsecured HTTPS/SOCKS proxies. Organizations must report DDoS attacks to CERT-In within 6 hours.",
+    "severity": "high",
+    "cvss_score": null,
+    "cvss_vector": null,
+    "published_date": "2023-06-15",
+    "source_url": "https://www.cert-in.org.in/",
+    "affected_software": ["Web servers", "DNS infrastructure", "Government portals"],
+    "attack_mapping": {
+      "cicids_label": "DDoS",
+      "mitre_technique_id": "T1498",
+      "mitre_tactic": "Impact"
+    },
+    "remediation": "Enable DDoS protection services. Implement rate limiting and traffic filtering. Deploy IDS/IPS at network perimeter. Maintain incident response plan with ISP coordination. Report to CERT-In within 6 hours per IT Act mandate.",
+    "cert_in_ref": "CIAD-2023-0040",
+    "tags": ["cert-in", "ddos", "india", "hacktivist", "infrastructure", "advisory"]
+  },
+
+  {
+    "doc_id": "CVE-2007-6750",
+    "type": "CVE",
+    "title": "Apache HTTP Server Slowloris — Connection Exhaustion DoS",
+    "description": "The Apache HTTP Server 1.x and 2.x allows remote attackers to cause a denial of service (daemon outage) via partial HTTP requests. The Slowloris attack sends incomplete HTTP request headers to keep connections open indefinitely, eventually exhausting the server's connection pool.",
+    "severity": "medium",
+    "cvss_score": 5.0,
+    "cvss_vector": "AV:N/AC:L/Au:N/C:N/I:N/A:P",
+    "published_date": "2007-01-01",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2007-6750",
+    "affected_software": ["Apache HTTP Server 1.x", "Apache HTTP Server 2.x (without mod_reqtimeout)"],
+    "attack_mapping": {
+      "cicids_label": "DoS slowloris",
+      "mitre_technique_id": "T1499",
+      "mitre_tactic": "Impact"
+    },
+    "remediation": "Enable mod_reqtimeout module in Apache. Set strict timeouts for request headers (RequestReadTimeout header=20-40). Use reverse proxies (nginx, HAProxy) in front of Apache. Limit concurrent connections per IP.",
+    "cert_in_ref": null,
+    "tags": ["apache", "slowloris", "connection-exhaustion", "slow-http", "dos"]
+  },
+  {
+    "doc_id": "CVE-2011-3192",
+    "type": "CVE",
+    "title": "Apache Range Header DoS — Memory Exhaustion via Overlapping Byte Ranges",
+    "description": "The byterange filter in the Apache HTTP Server 1.3.x, 2.0.x through 2.0.64, and 2.2.x through 2.2.19 allows remote attackers to cause a denial of service (memory and CPU consumption) via a Range header that expresses multiple overlapping ranges.",
+    "severity": "high",
+    "cvss_score": 7.8,
+    "cvss_vector": "AV:N/AC:L/Au:N/C:N/I:N/A:C",
+    "published_date": "2011-08-29",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2011-3192",
+    "affected_software": ["Apache HTTP Server 1.3.x", "Apache 2.0.x through 2.0.64", "Apache 2.2.x through 2.2.19"],
+    "attack_mapping": {
+      "cicids_label": "DoS Hulk",
+      "mitre_technique_id": "T1499",
+      "mitre_tactic": "Impact"
+    },
+    "remediation": "Update Apache to 2.2.20+ or 2.0.65+. As mitigation, limit Range header to a single range using mod_headers. Deploy WAF rules to block requests with excessive range specifications.",
+    "cert_in_ref": null,
+    "tags": ["apache", "range-header", "memory-exhaustion", "byte-range", "dos"]
+  },
+  {
+    "doc_id": "CVE-2014-0050",
+    "type": "CVE",
+    "title": "Apache Commons FileUpload DoS — Multipart Request Parsing OOM",
+    "description": "MultipartStream.java in Apache Commons FileUpload before 1.3.1 allows remote attackers to cause a denial of service (infinite loop and CPU consumption) via a crafted Content-Type header that bypasses a boundary check.",
+    "severity": "high",
+    "cvss_score": 7.5,
+    "cvss_vector": "AV:N/AC:L/Au:N/C:N/I:N/A:P",
+    "published_date": "2014-04-01",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2014-0050",
+    "affected_software": ["Apache Commons FileUpload before 1.3.1", "Apache Tomcat 7.x before 7.0.52", "Apache Tomcat 8.x before 8.0.3"],
+    "attack_mapping": {
+      "cicids_label": "DoS GoldenEye",
+      "mitre_technique_id": "T1499",
+      "mitre_tactic": "Impact"
+    },
+    "remediation": "Update Apache Commons FileUpload to 1.3.1+. Update Apache Tomcat to patched versions. Implement request size limits and connection timeouts.",
+    "cert_in_ref": null,
+    "tags": ["apache", "fileupload", "multipart", "oom", "infinite-loop", "dos"]
+  },
+  {
+    "doc_id": "CVE-2018-6389",
+    "type": "CVE",
+    "title": "WordPress load-scripts.php DoS — Unauthenticated Resource Exhaustion",
+    "description": "WordPress through 4.9.2 allows unauthenticated denial of service via the load-scripts.php endpoint, which can be exploited to consume server CPU and memory by requesting all registered scripts simultaneously without authentication.",
+    "severity": "high",
+    "cvss_score": 7.5,
+    "cvss_vector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+    "published_date": "2018-02-06",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2018-6389",
+    "affected_software": ["WordPress through 4.9.2"],
+    "attack_mapping": {
+      "cicids_label": "DoS Slowhttptest",
+      "mitre_technique_id": "T1499",
+      "mitre_tactic": "Impact"
+    },
+    "remediation": "Restrict access to load-scripts.php and load-styles.php in web server configuration. Implement rate limiting on WordPress admin endpoints. Use a WAF to filter malicious script-loading requests.",
+    "cert_in_ref": null,
+    "tags": ["wordpress", "load-scripts", "resource-exhaustion", "unauthenticated", "dos"]
+  },
+  {
+    "doc_id": "CIAD-2019-0238",
+    "type": "CERT-In",
+    "title": "CERT-In Advisory on HTTP Slow DoS Attacks Against Web Servers",
+    "description": "CERT-In advisory addressing the growing threat of HTTP slow denial-of-service attacks (Slowloris, SlowHTTPTest, R.U.D.Y.) targeting Indian web servers. These low-bandwidth attacks exhaust server connection pools by sending incomplete HTTP requests, making them difficult to detect with traditional volumetric DDoS defenses.",
+    "severity": "medium",
+    "cvss_score": null,
+    "cvss_vector": null,
+    "published_date": "2019-11-20",
+    "source_url": "https://www.cert-in.org.in/",
+    "affected_software": ["Apache HTTP Server", "IIS", "Nginx (misconfigured)"],
+    "attack_mapping": {
+      "cicids_label": "DoS slowloris",
+      "mitre_technique_id": "T1499",
+      "mitre_tactic": "Impact"
+    },
+    "remediation": "Configure request header/body timeouts (mod_reqtimeout for Apache). Limit concurrent connections per source IP. Deploy reverse proxies with connection management. Implement application-layer DDoS detection.",
+    "cert_in_ref": "CIAD-2019-0238",
+    "tags": ["cert-in", "slow-dos", "slowloris", "rudy", "india", "advisory"]
+  },
+
+  {
+    "doc_id": "CVE-2016-17564",
+    "type": "CVE",
+    "title": "Mirai Botnet — Default Credential Exploitation for IoT Device C2",
+    "description": "The Mirai malware exploits factory-default credentials on IoT devices (IP cameras, routers, DVRs) to form massive botnets used for DDoS attacks and command-and-control operations. Infected devices scan for other vulnerable hosts on TCP ports 23 and 2323 (Telnet) and attempt login with a built-in list of 62 default username/password pairs.",
+    "severity": "critical",
+    "cvss_score": 9.8,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "published_date": "2016-10-01",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2016-17564",
+    "affected_software": ["IoT devices with default credentials", "IP cameras", "Wireless routers", "DVRs"],
+    "attack_mapping": {
+      "cicids_label": "Bot",
+      "mitre_technique_id": "T1071",
+      "mitre_tactic": "Command and Control"
+    },
+    "remediation": "Change all default credentials on IoT devices. Disable Telnet and UPnP if not needed. Segment IoT devices on isolated VLANs. Deploy network monitoring for C2 beacon patterns. Keep firmware updated.",
+    "cert_in_ref": "CIAD-2023-0012",
+    "tags": ["mirai", "botnet", "iot", "default-credentials", "c2", "telnet"]
+  },
+  {
+    "doc_id": "CVE-2021-41773",
+    "type": "CVE",
+    "title": "Apache HTTP Server Path Traversal — Exploited by Zerobot Botnet",
+    "description": "A flaw was found in a change made to path normalization in Apache HTTP Server 2.4.49. An attacker could use a path traversal attack to map URLs to files outside the directories configured by Alias-like directives. This vulnerability was actively exploited by the Zerobot botnet to gain initial access and deploy C2 implants.",
+    "severity": "high",
+    "cvss_score": 7.5,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+    "published_date": "2021-10-05",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2021-41773",
+    "affected_software": ["Apache HTTP Server 2.4.49"],
+    "attack_mapping": {
+      "cicids_label": "Bot",
+      "mitre_technique_id": "T1071",
+      "mitre_tactic": "Command and Control"
+    },
+    "remediation": "Update Apache HTTP Server to 2.4.51+. Ensure 'require all denied' is set for filesystem roots. Monitor for path traversal patterns in access logs (encoded dot-dot-slash sequences).",
+    "cert_in_ref": null,
+    "tags": ["apache", "path-traversal", "zerobot", "botnet", "rce"]
+  },
+  {
+    "doc_id": "CVE-2022-42475",
+    "type": "CVE",
+    "title": "Fortinet FortiOS Heap Overflow — RCE Used for C2 Operations",
+    "description": "A heap-based buffer overflow vulnerability in FortiOS SSL-VPN may allow a remote unauthenticated attacker to execute arbitrary code or commands via specifically crafted requests. This vulnerability was actively exploited in the wild for establishing persistent command-and-control access to compromised networks.",
+    "severity": "critical",
+    "cvss_score": 9.8,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "published_date": "2022-12-12",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2022-42475",
+    "affected_software": ["FortiOS 7.2.0 through 7.2.2", "FortiOS 7.0.0 through 7.0.8", "FortiOS 6.4.0 through 6.4.10"],
+    "attack_mapping": {
+      "cicids_label": "Bot",
+      "mitre_technique_id": "T1071",
+      "mitre_tactic": "Command and Control"
+    },
+    "remediation": "Upgrade FortiOS to 7.2.3+, 7.0.9+, or 6.4.11+. Disable SSL-VPN if not required. Monitor for indicators of compromise in FortiOS logs. Check for unauthorized admin accounts and configuration changes.",
+    "cert_in_ref": null,
+    "tags": ["fortinet", "fortios", "ssl-vpn", "heap-overflow", "rce", "c2"]
+  },
+  {
+    "doc_id": "CIAD-2023-0012",
+    "type": "CERT-In",
+    "title": "CERT-In Advisory on Mirai Variant Targeting Indian IoT Infrastructure",
+    "description": "CERT-In advisory warning about a new Mirai botnet variant actively targeting IoT devices across Indian telecom and smart city infrastructure. The variant exploits default Telnet credentials and recently disclosed vulnerabilities in wireless routers and IP cameras to build DDoS-capable botnets. Compromised devices are used for both DDoS attacks and as C2 relay nodes.",
+    "severity": "high",
+    "cvss_score": null,
+    "cvss_vector": null,
+    "published_date": "2023-02-10",
+    "source_url": "https://www.cert-in.org.in/",
+    "affected_software": ["IoT devices", "Wireless routers", "IP cameras", "Smart city sensors"],
+    "attack_mapping": {
+      "cicids_label": "Bot",
+      "mitre_technique_id": "T1071",
+      "mitre_tactic": "Command and Control"
+    },
+    "remediation": "Change default credentials on all IoT devices. Disable Telnet (port 23/2323). Apply latest firmware updates. Segment IoT networks. Use Cyber Swachhta Kendra tools for botnet cleaning. Report compromised devices to CERT-In.",
+    "cert_in_ref": "CIAD-2023-0012",
+    "tags": ["cert-in", "mirai", "iot", "botnet", "india", "smart-city", "advisory"]
+  },
+
+  {
+    "doc_id": "CVE-2020-25078",
+    "type": "CVE",
+    "title": "D-Link IP Camera Information Disclosure — Enables Network Reconnaissance",
+    "description": "An issue was discovered on D-Link DCS-2530L before 1.06.01 devices. The unauthenticated /config/getuser endpoint allows an attacker to retrieve the admin username and password in cleartext, enabling further reconnaissance and lateral movement.",
+    "severity": "medium",
+    "cvss_score": 5.3,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+    "published_date": "2020-09-02",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2020-25078",
+    "affected_software": ["D-Link DCS-2530L before firmware 1.06.01"],
+    "attack_mapping": {
+      "cicids_label": "PortScan",
+      "mitre_technique_id": "T1046",
+      "mitre_tactic": "Discovery"
+    },
+    "remediation": "Update D-Link camera firmware to 1.06.01+. Restrict management interface access to trusted networks. Disable UPnP. Place IoT devices behind firewall with no direct internet exposure.",
+    "cert_in_ref": null,
+    "tags": ["d-link", "ip-camera", "info-disclosure", "credentials", "reconnaissance"]
+  },
+  {
+    "doc_id": "CVE-2023-20198",
+    "type": "CVE",
+    "title": "Cisco IOS XE Web UI Privilege Escalation — Discovered via Mass Scan Campaigns",
+    "description": "Cisco IOS XE Software Web UI contains a privilege escalation vulnerability that allows an unauthenticated remote attacker to create an account with level 15 (full admin) privileges. This vulnerability was discovered when mass scanning campaigns identified tens of thousands of exposed Cisco devices. Attackers first performed port scans to identify IOS XE Web UI instances, then exploited this zero-day for complete device takeover.",
+    "severity": "critical",
+    "cvss_score": 10.0,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+    "published_date": "2023-10-16",
+    "source_url": "https://nvd.nist.gov/vuln/detail/CVE-2023-20198",
+    "affected_software": ["Cisco IOS XE Software with Web UI enabled"],
+    "attack_mapping": {
+      "cicids_label": "PortScan",
+      "mitre_technique_id": "T1046",
+      "mitre_tactic": "Discovery"
+    },
+    "remediation": "Disable the HTTP/HTTPS Server feature on IOS XE devices. Apply Cisco patches immediately. Audit device configurations for unauthorized user accounts (level 15). Monitor for scanning activity targeting ports 80/443 on network infrastructure.",
+    "cert_in_ref": "CIAD-2023-0076",
+    "tags": ["cisco", "ios-xe", "privilege-escalation", "zero-day", "web-ui", "scan-campaign"]
+  },
+  {
+    "doc_id": "CIAD-2023-0076",
+    "type": "CERT-In",
+    "title": "CERT-In Advisory on Active Scanning Campaigns Targeting Indian Network Infrastructure",
+    "description": "CERT-In advisory regarding coordinated scanning campaigns targeting Indian network infrastructure, particularly Cisco IOS XE devices with exposed Web UI interfaces. Threat actors perform large-scale port scans to enumerate network devices and exploit vulnerabilities like CVE-2023-20198 for unauthorized access. Indian government and critical sector organizations are urged to audit their network device exposure.",
+    "severity": "high",
+    "cvss_score": null,
+    "cvss_vector": null,
+    "published_date": "2023-10-20",
+    "source_url": "https://www.cert-in.org.in/",
+    "affected_software": ["Cisco IOS XE", "Network routers and switches", "Management interfaces"],
+    "attack_mapping": {
+      "cicids_label": "PortScan",
+      "mitre_technique_id": "T1046",
+      "mitre_tactic": "Discovery"
+    },
+    "remediation": "Disable unnecessary management interfaces on network devices. Restrict management access to trusted IP ranges via ACLs. Deploy IDS/IPS to detect scanning patterns. Audit all exposed network infrastructure against CERT-In guidelines. Report reconnaissance incidents within 6 hours.",
+    "cert_in_ref": "CIAD-2023-0076",
+    "tags": ["cert-in", "scanning", "reconnaissance", "cisco", "india", "network-infrastructure", "advisory"]
+  }
+]

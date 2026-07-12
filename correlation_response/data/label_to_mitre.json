@@ -1,0 +1,157 @@
+{
+  "PortScan": {
+    "mitre_id": "T1046",
+    "technique": "Network Service Discovery",
+    "tactic": "Discovery",
+    "description": "Adversaries scan hosts and services to identify exposed ports and running network services.",
+    "mitigation": "Restrict unnecessary ports, deploy IDS/IPS, rate-limit scans, monitor reconnaissance activity.",
+    "orchestration": {
+      "severity": "LOW",
+      "requires_human_gate": false,
+      "playbook_id": "pb_log_reconnaissance",
+      "blast_radius": "Isolated Network Segment"
+    },
+    "telemetry_indicators": [
+      " Destination Port", 
+      " Fwd Packet Length Min", 
+      " Bwd Packet Length Min", 
+      " ACK Flag Count"
+    ]
+  },
+
+  "DDoS": {
+    "mitre_id": "T1498",
+    "technique": "Network Denial of Service",
+    "tactic": "Impact",
+    "description": "Adversaries flood network resources with excessive traffic to make services unavailable.",
+    "mitigation": "Enable DDoS protection, rate limiting, traffic filtering, CDN/WAF, and upstream scrubbing.",
+    "orchestration": {
+      "severity": "CRITICAL",
+      "requires_human_gate": true,
+      "playbook_id": "pb_upstream_scrubbing_activate",
+      "blast_radius": "Data Center / Multi-State Infrastructure"
+    },
+    "telemetry_indicators": [
+      " Total Fwd Packets", 
+      " Total Length of Fwd Packets", 
+      " Flow Duration", 
+      " Flow Packets/s"
+    ]
+  },
+
+  "DoS Hulk": {
+    "mitre_id": "T1499",
+    "technique": "Endpoint Denial of Service",
+    "tactic": "Impact",
+    "description": "A high-volume HTTP flood attack intended to exhaust web server resources and deny service.",
+    "mitigation": "Use Web Application Firewall (WAF), request throttling, autoscaling, and anomaly-based traffic filtering.",
+    "orchestration": {
+      "severity": "HIGH",
+      "requires_human_gate": false,
+      "playbook_id": "pb_auto_rate_limit_nginx",
+      "blast_radius": "Web Application Server"
+    },
+    "telemetry_indicators": [
+      " Flow Duration", 
+      " Total Fwd Packets", 
+      " Flow Bytes/s", 
+      " Fwd Packets/s"
+    ]
+  },
+
+  "DoS GoldenEye": {
+    "mitre_id": "T1499",
+    "technique": "Endpoint Denial of Service",
+    "tactic": "Impact",
+    "description": "An HTTP connection exhaustion attack that overwhelms web server resources using persistent requests.",
+    "mitigation": "Configure connection limits, deploy WAF, use reverse proxies, and monitor abnormal HTTP sessions.",
+    "orchestration": {
+      "severity": "HIGH",
+      "requires_human_gate": false,
+      "playbook_id": "pb_drop_persistent_sessions",
+      "blast_radius": "Web Application Server"
+    },
+    "telemetry_indicators": [
+      " Total Backward Packets", 
+      " Flow IAT Mean", 
+      " Down/Up Ratio"
+    ]
+  },
+
+  "DoS Slowhttptest": {
+    "mitre_id": "T1499",
+    "technique": "Endpoint Denial of Service",
+    "tactic": "Impact",
+    "description": "A slow HTTP attack that keeps numerous HTTP sessions open to exhaust server resources.",
+    "mitigation": "Configure request timeouts, connection limits, WAF protections, and reverse proxies.",
+    "orchestration": {
+      "severity": "MEDIUM",
+      "requires_human_gate": false,
+      "playbook_id": "pb_reduce_timeout_thresholds",
+      "blast_radius": "Web Application Server"
+    },
+    "telemetry_indicators": [
+      " Flow IAT Max", 
+      " Fwd IAT Total", 
+      " Idle Max"
+    ]
+  },
+
+  "DoS slowloris": {
+    "mitre_id": "T1499",
+    "technique": "Endpoint Denial of Service",
+    "tactic": "Impact",
+    "description": "An attacker slowly sends partial HTTP requests to keep many connections open and exhaust server capacity.",
+    "mitigation": "Reduce connection timeout values, limit concurrent connections, enable WAF, and use load balancers.",
+    "orchestration": {
+      "severity": "HIGH",
+      "requires_human_gate": false,
+      "playbook_id": "pb_enable_reverse_proxy_shield",
+      "blast_radius": "Web Application Server"
+    },
+    "telemetry_indicators": [
+      " Flow IAT Mean", 
+      " Bwd IAT Total", 
+      " Active Min"
+    ]
+  },
+
+  "Heartbleed": {
+    "mitre_id": "T1190",
+    "technique": "Exploit Public-Facing Application",
+    "tactic": "Initial Access",
+    "description": "Exploitation of the OpenSSL Heartbleed vulnerability to retrieve sensitive memory from exposed servers.",
+    "mitigation": "Patch vulnerable OpenSSL versions, revoke compromised certificates, rotate credentials, and monitor exploitation attempts.",
+    "orchestration": {
+      "severity": "CRITICAL",
+      "requires_human_gate": true,
+      "playbook_id": "pb_isolate_host_credential_rotation",
+      "blast_radius": "Core Host / Database Layer"
+    },
+    "telemetry_indicators": [
+      " Total Length of Bwd Packets", 
+      " Bwd Packet Length Max", 
+      " Fwd Packet Length Mean"
+    ]
+  },
+
+  "Bot": {
+    "mitre_id": "T1071",
+    "technique": "Application Layer Protocol",
+    "tactic": "Command and Control",
+    "description": "Compromised systems communicate with a command-and-control server using common application protocols such as HTTP or HTTPS.",
+    "mitigation": "Detect outbound C2 traffic, block malicious domains/IPs, isolate infected hosts, and deploy EDR.",
+    "orchestration": {
+      "severity": "HIGH",
+      "requires_human_gate": true,
+      "playbook_id": "pb_block_c2_ip_isolate_endpoint",
+      "blast_radius": "Local Internal Endpoint"
+    },
+    "telemetry_indicators": [
+      " Destination Port", 
+      " Flow Duration", 
+      " Fwd IAT Mean", 
+      " Bwd Packets/s"
+    ]
+  }
+}

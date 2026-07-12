@@ -1,0 +1,122 @@
+[
+  {
+    "technique_id": "T1046",
+    "name": "Network Service Discovery",
+    "tactic": "Discovery",
+    "description": "Adversaries may attempt to get a listing of services running on remote hosts and local network infrastructure devices, including those that may be vulnerable to remote software exploitation."
+  },
+  {
+    "technique_id": "T1595",
+    "name": "Active Scanning",
+    "tactic": "Reconnaissance",
+    "description": "Adversaries may execute active reconnaissance scans to gather information that can be used during targeting, such as open ports, running services, or vulnerable software."
+  },
+  {
+    "technique_id": "T1498",
+    "name": "Network Denial of Service",
+    "tactic": "Impact",
+    "description": "Adversaries may perform Network Denial of Service (DoS) attacks to degrade or block the availability of targeted resources to users by saturating the network bandwidth."
+  },
+  {
+    "technique_id": "T1499",
+    "name": "Endpoint Denial of Service",
+    "tactic": "Impact",
+    "description": "Adversaries may perform Endpoint Denial of Service (DoS) attacks to degrade or block the availability of services to users by exhausting system resources on the endpoint."
+  },
+  {
+    "technique_id": "T1071",
+    "name": "Application Layer Protocol",
+    "tactic": "Command and Control",
+    "description": "Adversaries may communicate using OSI application layer protocols to avoid detection or network filtering, by blending in with existing traffic."
+  },
+  {
+    "technique_id": "T1190",
+    "name": "Exploit Public-Facing Application",
+    "tactic": "Initial Access",
+    "description": "Adversaries may attempt to exploit a weakness in an Internet-facing host or system to initially access a network."
+  },
+  {
+    "technique_id": "T1059",
+    "name": "Command and Scripting Interpreter",
+    "tactic": "Execution",
+    "description": "Adversaries may abuse command and script interpreters to execute commands, scripts, or binaries for payload delivery and further compromise."
+  },
+  {
+    "technique_id": "T1078",
+    "name": "Valid Accounts",
+    "tactic": "Persistence",
+    "description": "Adversaries may obtain and abuse credentials of existing accounts as a means of gaining Initial Access, Persistence, Privilege Escalation, or Defense Evasion."
+  },
+  {
+    "technique_id": "T1110",
+    "name": "Brute Force",
+    "tactic": "Credential Access",
+    "description": "Adversaries may use brute force techniques to gain access to accounts when passwords are unknown or when password hashes are obtained."
+  },
+  {
+    "technique_id": "T1021",
+    "name": "Remote Services",
+    "tactic": "Lateral Movement",
+    "description": "Adversaries may use valid accounts to log into a service that accepts remote connections, such as SSH, RDP, or VNC, to move laterally within a network."
+  },
+  {
+    "technique_id": "T1048",
+    "name": "Exfiltration Over Alternative Protocol",
+    "tactic": "Exfiltration",
+    "description": "Adversaries may steal data by exfiltrating it over a different protocol than that of the existing command and control channel."
+  },
+  {
+    "technique_id": "T1098",
+    "name": "Account Manipulation",
+    "tactic": "Persistence",
+    "description": "Adversaries may manipulate accounts to maintain and/or elevate access to victim systems, including modifying credentials or permissions."
+  },
+  {
+    "technique_id": "T1053",
+    "name": "Scheduled Task/Job",
+    "tactic": "Execution",
+    "description": "Adversaries may abuse task scheduling functionality to facilitate initial or recurring execution of malicious code."
+  },
+  {
+    "technique_id": "T1027",
+    "name": "Obfuscated Files or Information",
+    "tactic": "Defense Evasion",
+    "description": "Adversaries may attempt to make an executable or file difficult to discover or analyze by encrypting, encoding, or otherwise obfuscating its contents."
+  },
+  {
+    "technique_id": "T1570",
+    "name": "Lateral Tool Transfer",
+    "tactic": "Lateral Movement",
+    "description": "Adversaries may transfer tools or other files between systems in a compromised environment using lateral movement techniques."
+  },
+  {
+    "technique_id": "T1105",
+    "name": "Ingress Tool Transfer",
+    "tactic": "Command and Control",
+    "description": "Adversaries may transfer tools or other files from an external system into a compromised environment to facilitate follow-on actions."
+  },
+  {
+    "technique_id": "T1486",
+    "name": "Data Encrypted for Impact",
+    "tactic": "Impact",
+    "description": "Adversaries may encrypt data on target systems or on large numbers of systems in a network to interrupt availability to system and network resources (ransomware)."
+  },
+  {
+    "technique_id": "T1082",
+    "name": "System Information Discovery",
+    "tactic": "Discovery",
+    "description": "An adversary may attempt to get detailed information about the operating system and hardware, including version, patches, and architecture."
+  },
+  {
+    "technique_id": "T1133",
+    "name": "External Remote Services",
+    "tactic": "Initial Access",
+    "description": "Adversaries may leverage external-facing remote services to initially access and/or persist within a network, such as VPNs, Citrix, and other access mechanisms."
+  },
+  {
+    "technique_id": "T1583",
+    "name": "Acquire Infrastructure",
+    "tactic": "Reconnaissance",
+    "description": "Adversaries may buy, lease, rent, or obtain infrastructure that can be used during targeting, such as servers, domains, or third-party web services."
+  }
+]

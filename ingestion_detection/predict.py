@@ -11,7 +11,11 @@ import numpy as np
 import pandas as pd
 
 from ingestion_detection.baseline.builder import load_baseline_profiles, z_score_anomaly
-from ingestion_detection.features import derive_entity_id
+from ingestion_detection.features import (
+    derive_entity_id,
+    validate_feature_dict,
+    validate_feature_list,
+)
 from shared.enums import ATTACK_TITLES, severity_from_confidence
 from shared.schemas import DetectionResult, PredictData, new_event_id, utc_now
 
@@ -51,15 +55,14 @@ def _load_id_to_label() -> dict[int, str]:
 
 def features_dict_to_vector(features: dict[str, float]) -> pd.DataFrame:
     order = _load_feature_order()
-    row = {name: float(features.get(name, 0.0)) for name in order}
-    return pd.DataFrame([row], columns=order)
+    cleaned = validate_feature_dict(features, order)
+    return pd.DataFrame([cleaned], columns=order)
 
 
 def features_list_to_vector(features: list[float]) -> pd.DataFrame:
     order = _load_feature_order()
-    if len(features) != len(order):
-        raise ValueError(f"Expected {len(order)} features, got {len(features)}")
-    return pd.DataFrame([features], columns=order)
+    cleaned = validate_feature_list(features, order)
+    return pd.DataFrame([cleaned], columns=order)
 
 
 def predict_vector(X: pd.DataFrame) -> PredictData:
@@ -100,17 +103,25 @@ def detect_signal(
     detected_at=None,
     use_baseline: bool = True,
 ) -> DetectionResult:
-    pred = predict_features_dict(features)
-    entity = asset_id or derive_entity_id(features)
+    # Validate/align first so entity_id and baseline use the cleaned map.
+    order = _load_feature_order()
+    cleaned = validate_feature_dict(features, order)
+
+    pred = predict_features_dict(cleaned)
+    entity = asset_id or derive_entity_id(cleaned)
     sid = signal_id or new_event_id()
     ts = detected_at or utc_now()
 
     baseline_deviation = 0.0
     if use_baseline:
         profiles = load_baseline_profiles()
-        baseline_deviation = z_score_anomaly(entity, features, profiles)
+        baseline_deviation = z_score_anomaly(entity, cleaned, profiles)
 
-    anomaly_score = max(pred.anomaly_score, baseline_deviation) if pred.attack != "BENIGN" else baseline_deviation
+    anomaly_score = (
+        max(pred.anomaly_score, baseline_deviation)
+        if pred.attack != "BENIGN"
+        else baseline_deviation
+    )
 
     title = ATTACK_TITLES.get(pred.attack, pred.attack)
     severity = severity_from_confidence(pred.confidence, pred.attack)
