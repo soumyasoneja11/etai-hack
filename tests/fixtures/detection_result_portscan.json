@@ -1,0 +1,13 @@
+{
+  "signal_id": "f048cffb-636f-4042-b26e-523e2fde9689",
+  "asset_id": "dst-80-win-8192",
+  "detected_at": "2026-07-12T17:37:20.717824Z",
+  "attack": "PortScan",
+  "confidence": 99.5,
+  "anomaly_score": 0.995,
+  "baseline_deviation": 0.4,
+  "severity": "critical",
+  "title": "Port Scan Activity",
+  "reason": "PortScan",
+  "top_features": []
+}

@@ -19,10 +19,10 @@ import pandas as pd
 from ingestion_detection.features import (
     LABEL_COL,
     derive_entity_id,
-    feature_columns_from_df,
     load_flow_csv,
     row_to_features,
 )
+from ingestion_detection.predict import _load_feature_order
 from ingestion_detection.replay.scenarios import SCENARIOS, ReplayScenario, get_scenario
 from shared.schemas import SignalIngestRequest
 
@@ -61,7 +61,8 @@ def iter_replay_rows(
     phase: str = "attack",
 ) -> tuple[pd.DataFrame, list[str], int, int]:
     df = load_flow_csv(scenario.path)
-    feature_columns = feature_columns_from_df(df)
+    # Use training feature_order so ingest validation always sees a complete map.
+    feature_columns = _load_feature_order()
 
     if phase == "attack":
         begin = scenario.attack_start_row

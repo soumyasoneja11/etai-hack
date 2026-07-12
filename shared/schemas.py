@@ -59,9 +59,13 @@ class SignalIngestRequest(BaseModel):
     @field_validator("features")
     @classmethod
     def clean_features(cls, v: dict[str, Any]) -> dict[str, float]:
+        if not v:
+            raise ValueError("features dict must not be empty")
         cleaned: dict[str, float] = {}
         for key, value in v.items():
             if value is None or (isinstance(value, float) and value != value):
+                cleaned[key] = 0.0
+            elif isinstance(value, float) and value in (float("inf"), float("-inf")):
                 cleaned[key] = 0.0
             else:
                 cleaned[key] = float(value)
@@ -113,9 +117,13 @@ class PredictRequest(BaseModel):
     @field_validator("features")
     @classmethod
     def sanitize_features(cls, v: list[float]) -> list[float]:
+        if not v:
+            raise ValueError("features list must not be empty")
         out: list[float] = []
         for x in v:
             if x is None or (isinstance(x, float) and x != x):
+                out.append(0.0)
+            elif isinstance(x, float) and x in (float("inf"), float("-inf")):
                 out.append(0.0)
             else:
                 out.append(float(x))

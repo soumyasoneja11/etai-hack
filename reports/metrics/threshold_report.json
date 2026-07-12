@@ -1,0 +1,95 @@
+{
+  "approach": "A_evidence_only",
+  "n_rows": 246433,
+  "test_accuracy_vs_true_labels": 0.9990301623565025,
+  "production_rules": {
+    "severity_bands": {
+      "BENIGN": "always low",
+      "critical": "confidence >= 90",
+      "high": "confidence >= 75",
+      "medium": "confidence >= 50",
+      "low": "confidence < 50 (non-BENIGN)"
+    },
+    "baseline_z_divisor": 3.0,
+    "unknown_entity_risk": 1.0,
+    "score_combine": "max(ml_anomaly_score, baseline_deviation) when attack != BENIGN; else baseline_deviation"
+  },
+  "ml_score_summary": {
+    "benign_confidence": {
+      "count": 163524,
+      "mean": 99.98853268660729,
+      "std": 0.5249548752086819,
+      "p50": 99.99996943202602,
+      "p95": 99.99998756417007,
+      "p99": 99.99998814894236,
+      "min": 50.403163242784785,
+      "max": 99.99999999999953
+    },
+    "attack_confidence": {
+      "count": 82909,
+      "mean": 99.9682237896212,
+      "std": 0.8707875130931931,
+      "p50": 99.99999266664136,
+      "p95": 99.99999655396013,
+      "p99": 99.99999685052613,
+      "min": 49.797968382543026,
+      "max": 99.99999939566162
+    },
+    "benign_ml_anomaly_score": {
+      "count": 163524,
+      "mean": 0.000912071228431204,
+      "std": 0.029652764417277894,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "min": 0.0,
+      "max": 0.999999856692375
+    },
+    "attack_ml_anomaly_score": {
+      "count": 82909,
+      "mean": 0.9991319811138266,
+      "std": 0.026363821615570493,
+      "p50": 0.9999999266664136,
+      "p95": 0.9999999655396014,
+      "p99": 0.9999999685052613,
+      "min": 0.0,
+      "max": 0.9999999939566162
+    },
+    "separation": {
+      "metric": "ml_anomaly_score",
+      "benign_p95": 0.0,
+      "attack_p5": 0.9999991077298186,
+      "gap_attack_p5_minus_benign_p95": 0.9999991077298186,
+      "well_separated": true,
+      "note": "Confidence is high for both BENIGN and attacks when predictions are correct; anomaly_score is the production field that encodes attack vs benign."
+    },
+    "true_attack_severity_band_counts": {
+      "low": 1,
+      "medium": 36,
+      "high": 36,
+      "critical": 82836
+    },
+    "true_attack_pct_confidence_ge_90": 99.91195165784174,
+    "true_benign_pct_confidence_ge_90": 99.96697732442944,
+    "true_benign_pct_anomaly_gt_0": 0.09539884053716886,
+    "true_attack_pct_anomaly_ge_0_75": 99.91315779951513
+  },
+  "baseline_sample_summary": {
+    "sample_size": 5000,
+    "benign_mean": 0.4390133972526841,
+    "attack_mean": 0.8977169039121242,
+    "unknown_entity_risk": 1.0,
+    "z_divisor": 3.0
+  },
+  "artifacts": {
+    "score_distributions_png": "reports\\metrics\\score_distributions.png",
+    "threshold_report_json": "reports/metrics/threshold_report.json",
+    "thresholds_md": "docs/THRESHOLDS.md"
+  },
+  "recommendation": {
+    "keep_current_constants": true,
+    "rationale": "ml_anomaly_score cleanly separates BENIGN (\u22480) from attacks on the held-out test set; ~99.9% of true attacks land in the critical severity band (confidence \u2265 90). Keep severity bands 50/75/90 and baseline z/3.0 unchanged.",
+    "approach": "A_evidence_only",
+    "parent_modules_modified": []
+  }
+}
