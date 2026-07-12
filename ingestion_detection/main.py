@@ -207,6 +207,9 @@ def _ingest_signal(
             )
         except ModelNotReadyError as exc:
             logger.warning("Model not ready, ingest without score: %s", exc)
+        except ValueError as exc:
+            # Malformed / incomplete features — fail the request (Day 8 edge cases)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # Persist to Supabase
     user_id = user_payload.get("sub")
