@@ -13,6 +13,6 @@ After adding files:
 
 ```bash
 pip install -e .
-python src/eda.py
+python scripts/eda.py
 python -m ingestion_detection.baseline.builder
 ```

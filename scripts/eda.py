@@ -2,7 +2,7 @@
 Exploratory Data Analysis for CICIDS2017 network flow CSVs.
 
 Run from project root:
-    python src/eda.py
+    python scripts/eda.py
 """
 
 from __future__ import annotations
