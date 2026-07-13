@@ -12,11 +12,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from correlation_response.config import settings
-from correlation_response.correlate import correlate_detection, get_threat_intel_bundle
+from correlation_response.correlate import correlate_detection, get_threat_intel, get_threat_intel_bundle
 from correlation_response.supabase_store import anomaly_store
 from shared.auth import require_auth
 from shared.envelope import error_response, success_response
-from shared.schemas import DetectionResult
+from shared.schemas import (
+    BlockRequest,
+    DetectionResult,
+    IsolateRequest,
+    NarrativeRequest,
+    RevokeRequest,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,8 +36,12 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="CyberShield — Correlation & Response (B)",
-    version="0.1.0",
-    description="MITRE ATT&CK correlation, anomaly persistence, Neo4j graph. Aligns with CyberShield_NIC_API_Schema.",
+    version="0.2.0",
+    description=(
+        "MITRE ATT&CK correlation, anomaly persistence, Neo4j graph, "
+        "RAG narrative, decision engine, mock SOAR, audit trail. "
+        "Aligns with CyberShield_NIC_API_Schema."
+    ),
     lifespan=lifespan,
 )
 
@@ -144,14 +154,27 @@ def correlate(
     ]
     attribution["threat_intel"] = threat_bundle
 
+    # 5. Decision engine (auto-compute recommendation)
+    from correlation_response.decision import compute_decision
+
+    decision_result = compute_decision(
+        anomaly_id=anomaly_id,
+        attack=detection.attack,
+        confidence=detection.confidence,
+        mitre_technique_id=attribution["mitre_technique_id"],
+        mitre_tactic=attribution["mitre_tactic"],
+    )
+    attribution["decision"] = decision_result.model_dump(mode="json")
+
     logger.info(
-        "correlated signal=%s attack=%s → %s (%s) anomaly=%s threat_intel=%d",
+        "correlated signal=%s attack=%s → %s (%s) anomaly=%s threat_intel=%d decision=%s",
         detection.signal_id,
         detection.attack,
         attribution["mitre_technique_id"],
         attribution["mitre_tactic"],
         anomaly_id,
         threat_bundle["total"],
+        decision_result.decision,
     )
 
     return success_response(attribution)
@@ -239,6 +262,266 @@ def list_attributions(
         "total": anomaly_store.count(),
         "limit": limit,
         "offset": offset,
+    })
+
+
+# ===================================================================
+# NEW ENDPOINTS — Day 6–8
+# ===================================================================
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/narrative (authenticated) — Day 6
+# ---------------------------------------------------------------------------
+
+@app.post("/api/v1/narrative")
+def generate_narrative_endpoint(
+    req: NarrativeRequest,
+    user: dict = Depends(require_auth),
+):
+    """Generate an analyst-style RAG narrative for an anomaly.
+
+    Retrieves threat intel docs, calls LLM (Gemini), returns structured
+    narrative. Falls back to template if LLM is unavailable.
+    """
+    from correlation_response.narrative import generate_narrative
+
+    # Fetch anomaly from store
+    stored = anomaly_store.get(req.anomaly_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="anomaly not found")
+
+    # Get attribution
+    attrs = anomaly_store.list_attributions(limit=1000, offset=0)
+    attribution = next(
+        (a for a in attrs if a.get("anomaly_id") == req.anomaly_id),
+        None,
+    )
+
+    attack = stored.get("title", "Unknown")
+    mitre_technique_id = attribution.get("mitre_technique_id", "T0000") if attribution else "T0000"
+    technique_name = attribution.get("technique_name", "Unknown") if attribution else "Unknown"
+    mitre_tactic = attribution.get("mitre_tactic", "unknown") if attribution else "unknown"
+    confidence = attribution.get("confidence", 0.0) if attribution else 0.0
+    asset_id = stored.get("asset_id", "unknown")
+    detected_at = stored.get("detected_at", "unknown")
+
+    # Derive attack label for threat intel lookup
+    # Try to map title back to CICIDS label via reverse lookup
+    from shared.enums import ATTACK_TITLES
+    attack_label = next(
+        (k for k, v in ATTACK_TITLES.items() if v == attack),
+        attack,
+    )
+
+    # Retrieve threat intel docs
+    threat_docs = get_threat_intel(attack_label)
+
+    user_id = user.get("sub")
+    result = generate_narrative(
+        anomaly_id=req.anomaly_id,
+        attack=attack_label,
+        mitre_technique_id=mitre_technique_id,
+        technique_name=technique_name,
+        mitre_tactic=mitre_tactic,
+        confidence=confidence,
+        asset_id=asset_id,
+        detected_at=str(detected_at),
+        threat_docs=threat_docs,
+        user_id=user_id,
+    )
+
+    return success_response(result.model_dump(mode="json"))
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/decide (authenticated) — Day 7
+# ---------------------------------------------------------------------------
+
+@app.post("/api/v1/decide")
+def decide_endpoint(
+    req: NarrativeRequest,  # reuse — only needs anomaly_id
+    user: dict = Depends(require_auth),
+):
+    """Compute a decision recommendation for an anomaly.
+
+    Combines ML confidence with blast radius (from Neo4j or static fallback)
+    to produce an actionable recommendation.
+    """
+    from correlation_response.audit import log_action
+    from correlation_response.decision import compute_decision
+
+    stored = anomaly_store.get(req.anomaly_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="anomaly not found")
+
+    attrs = anomaly_store.list_attributions(limit=1000, offset=0)
+    attribution = next(
+        (a for a in attrs if a.get("anomaly_id") == req.anomaly_id),
+        None,
+    )
+
+    attack = stored.get("title", "Unknown")
+    from shared.enums import ATTACK_TITLES
+    attack_label = next(
+        (k for k, v in ATTACK_TITLES.items() if v == attack),
+        attack,
+    )
+
+    confidence = attribution.get("confidence", 0.0) if attribution else 0.0
+    mitre_technique_id = attribution.get("mitre_technique_id", "") if attribution else ""
+    mitre_tactic = attribution.get("mitre_tactic", "") if attribution else ""
+
+    result = compute_decision(
+        anomaly_id=req.anomaly_id,
+        attack=attack_label,
+        confidence=confidence,
+        mitre_technique_id=mitre_technique_id,
+        mitre_tactic=mitre_tactic,
+    )
+
+    # Audit trail
+    from shared.schemas import AuditEntry
+    log_action(
+        AuditEntry(
+            anomaly_id=req.anomaly_id,
+            action_type="decision_computed",
+            actor=user.get("email", "system"),
+            target=stored.get("asset_id", ""),
+            decision=result.decision,
+            status="success",
+            details=result.model_dump(mode="json"),
+        ),
+        user_id=user.get("sub"),
+    )
+
+    return success_response(result.model_dump(mode="json"))
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/soar/* (authenticated) — Day 8
+# ---------------------------------------------------------------------------
+
+@app.post("/api/v1/soar/isolate")
+async def soar_isolate(
+    req: IsolateRequest,
+    user: dict = Depends(require_auth),
+):
+    """Simulate network isolation of a compromised endpoint."""
+    from correlation_response import soar
+
+    result = await soar.isolate_endpoint(
+        anomaly_id=req.anomaly_id,
+        asset_id=req.asset_id,
+        actor=user.get("email", "system"),
+        user_id=user.get("sub"),
+    )
+    return success_response(result.model_dump(mode="json"))
+
+
+@app.post("/api/v1/soar/block")
+async def soar_block(
+    req: BlockRequest,
+    user: dict = Depends(require_auth),
+):
+    """Simulate firewall block of a malicious IP."""
+    from correlation_response import soar
+
+    result = await soar.block_ip(
+        anomaly_id=req.anomaly_id,
+        ip_address=req.ip_address,
+        actor=user.get("email", "system"),
+        user_id=user.get("sub"),
+    )
+    return success_response(result.model_dump(mode="json"))
+
+
+@app.post("/api/v1/soar/revoke")
+async def soar_revoke(
+    req: RevokeRequest,
+    user: dict = Depends(require_auth),
+):
+    """Simulate credential revocation for a compromised asset."""
+    from correlation_response import soar
+
+    result = await soar.revoke_credential(
+        anomaly_id=req.anomaly_id,
+        asset_id=req.asset_id,
+        actor=user.get("email", "system"),
+        user_id=user.get("sub"),
+    )
+    return success_response(result.model_dump(mode="json"))
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/soar/actions (authenticated) — Day 8
+# ---------------------------------------------------------------------------
+
+@app.get("/api/v1/soar/actions")
+def list_soar_actions(
+    limit: int = 50,
+    offset: int = 0,
+    _user: dict = Depends(require_auth),
+):
+    """List recent SOAR actions."""
+    from correlation_response.audit import list_soar_actions as _list
+
+    items = _list(limit=limit, offset=offset)
+    return success_response({
+        "items": items,
+        "limit": limit,
+        "offset": offset,
+    })
+
+
+@app.get("/api/v1/soar/actions/{action_id}")
+def get_soar_action_endpoint(
+    action_id: str,
+    _user: dict = Depends(require_auth),
+):
+    """Get a single SOAR action by ID."""
+    from correlation_response.audit import get_soar_action
+
+    action = get_soar_action(action_id)
+    if action is None:
+        raise HTTPException(status_code=404, detail="SOAR action not found")
+    return success_response(action)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/audit (authenticated) — Day 8
+# ---------------------------------------------------------------------------
+
+@app.get("/api/v1/audit")
+def list_audit_endpoint(
+    limit: int = 50,
+    offset: int = 0,
+    _user: dict = Depends(require_auth),
+):
+    """Paginated list of audit log entries."""
+    from correlation_response.audit import list_audit_logs
+
+    items = list_audit_logs(limit=limit, offset=offset)
+    return success_response({
+        "items": items,
+        "limit": limit,
+        "offset": offset,
+    })
+
+
+@app.get("/api/v1/audit/{anomaly_id}")
+def get_audit_trail_endpoint(
+    anomaly_id: str,
+    _user: dict = Depends(require_auth),
+):
+    """Audit trail for a specific anomaly."""
+    from correlation_response.audit import get_audit_trail
+
+    items = get_audit_trail(anomaly_id)
+    return success_response({
+        "anomaly_id": anomaly_id,
+        "items": items,
+        "total": len(items),
     })
 
 

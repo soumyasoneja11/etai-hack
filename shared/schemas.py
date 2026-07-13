@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
-from shared.enums import AnomalyStatus, Severity
+from shared.enums import ActionType, AnomalyStatus, Severity
 
 
 # ---------------------------------------------------------------------------
@@ -263,3 +263,83 @@ def new_event_id() -> str:
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# ---------------------------------------------------------------------------
+# RAG Narrative (Day 6)
+# ---------------------------------------------------------------------------
+
+
+class NarrativeRequest(BaseModel):
+    anomaly_id: str = Field(..., description="UUID of the anomaly to narrate.")
+
+
+class NarrativeResponse(BaseModel):
+    anomaly_id: str
+    narrative: str
+    sources: list[str] = Field(default_factory=list, description="Doc IDs used as context.")
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# ---------------------------------------------------------------------------
+# Decision Engine (Day 7)
+# ---------------------------------------------------------------------------
+
+
+class DecisionResult(BaseModel):
+    anomaly_id: str
+    recommended_action: ActionType | None = None
+    decision: Literal["auto_execute", "recommend", "alert_only", "monitor"]
+    confidence: float = Field(..., ge=0.0, le=100.0)
+    blast_radius: int = Field(..., ge=0, description="Count of connected assets.")
+    blast_radius_label: str = ""
+    requires_human_approval: bool = True
+    reasoning: str = ""
+    playbook_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Mock SOAR (Day 8)
+# ---------------------------------------------------------------------------
+
+
+class IsolateRequest(BaseModel):
+    anomaly_id: str
+    asset_id: str
+
+
+class BlockRequest(BaseModel):
+    anomaly_id: str
+    ip_address: str
+
+
+class RevokeRequest(BaseModel):
+    anomaly_id: str
+    asset_id: str
+
+
+class SOARActionResult(BaseModel):
+    action_id: str
+    action_type: ActionType
+    target: str
+    status: Literal["executed", "failed", "simulated"] = "simulated"
+    executed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    message: str = ""
+    simulated: bool = True
+
+
+# ---------------------------------------------------------------------------
+# Audit Logging (Day 8)
+# ---------------------------------------------------------------------------
+
+
+class AuditEntry(BaseModel):
+    audit_id: str = Field(default_factory=lambda: str(uuid4()))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    anomaly_id: str
+    action_type: str
+    actor: str = "system"
+    target: str = ""
+    decision: str = ""
+    status: str = "success"
+    details: dict[str, Any] = Field(default_factory=dict)
