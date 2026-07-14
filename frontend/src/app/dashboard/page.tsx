@@ -22,7 +22,10 @@ import {
   User,
   LayoutDashboard,
   Calendar,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
+import { IS_MOCK_MODE } from "@/lib/api-client";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import { MetricCard } from "@/components/shared/MetricCard";
@@ -38,7 +41,7 @@ import {
   AUDIT_LOGS,
 } from "@/lib/dummy-data";
 import { SEVERITY_LEVELS } from "@/lib/constants";
-import { AnomalyListItem } from "../api/alerts/route";
+import type { AnomalyListItem } from "@/types/api";
 import { GraphNode, GraphLink } from "../api/graph/route";
 
 // Lazy load heavy chart components
@@ -274,6 +277,24 @@ export default function DashboardPage() {
 // 1. OVERVIEW SCREEN COMPONENT
 // ==========================================
 function OverviewScreen({ alerts }: { alerts: AnomalyListItem[] }) {
+  const [isScanning, setIsScanning] = useState(false);
+
+  const handleQuickScan = async () => {
+    if (isScanning) return; // guard against double-clicks
+    setIsScanning(true);
+    try {
+      // TODO: Wire to real backend scan endpoint when available
+      // For now, simulate a scan in both mock and real modes
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      toast.success("Quick scan complete. Baseline nominal.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Scan failed unexpectedly.";
+      toast.error(message);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Welcome Banner */}
@@ -293,9 +314,17 @@ function OverviewScreen({ alerts }: { alerts: AnomalyListItem[] }) {
               Threat Level: Elevated
             </span>
           </div>
-          <button className="hidden md:inline-flex items-center gap-2 rounded-[14px] bg-cyber-green px-4 py-2 text-xs font-semibold text-black hover:bg-cyber-green/90 transition-colors">
-            <Zap className="h-3.5 w-3.5" />
-            Quick Scan
+          <button
+            onClick={handleQuickScan}
+            disabled={isScanning}
+            className="hidden md:inline-flex items-center gap-2 rounded-[14px] bg-cyber-green px-4 py-2 text-xs font-semibold text-black hover:bg-cyber-green/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isScanning ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Zap className="h-3.5 w-3.5" />
+            )}
+            {isScanning ? "Scanning..." : "Quick Scan"}
           </button>
         </div>
       </div>

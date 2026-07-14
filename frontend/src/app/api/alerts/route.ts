@@ -1,15 +1,8 @@
 import { NextResponse } from "next/server";
+import type { AnomalyListItem } from "@/types/api";
 
-export interface AnomalyListItem {
-  anomaly_id: string;
-  title: string;
-  severity: "low" | "medium" | "high" | "critical";
-  status: "new" | "investigating" | "acknowledged" | "contained" | "false_positive";
-  asset_id: string;
-  detected_at: string;
-  score: number;
-  reason: string;
-}
+// Re-export so existing imports from this module continue to work
+export type { AnomalyListItem } from "@/types/api";
 
 const ATTACK_TEMPLATES = [
   {
