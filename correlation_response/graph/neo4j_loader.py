@@ -133,6 +133,36 @@ def create_exhibited_relationship(
         driver.close()
 
 
+def count_connected_assets(technique_id: str) -> int:
+    """Count distinct assets connected to a technique via EXHIBITED relationships.
+
+    Used by the decision engine to compute blast radius.
+    Returns 0 if Neo4j is unavailable or query fails.
+    """
+    driver = _get_driver()
+    if driver is None:
+        return 0
+
+    try:
+        with driver.session() as session:
+            result = session.run(
+                """
+                MATCH (a:Asset)-[:EXHIBITED]->(t:Technique {technique_id: $technique_id})
+                RETURN count(DISTINCT a) AS asset_count
+                """,
+                technique_id=technique_id,
+            )
+            record = result.single()
+            count = record["asset_count"] if record else 0
+            logger.debug("Blast radius for %s: %d assets", technique_id, count)
+            return count
+    except Exception as exc:
+        logger.error("Failed to count connected assets for %s: %s", technique_id, exc)
+        return 0
+    finally:
+        driver.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Seed MITRE techniques into Neo4j Aura")

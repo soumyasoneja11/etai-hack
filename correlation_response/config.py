@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = ""
 
+    # Gemini LLM — optional; narrative falls back to template-only if missing
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+    narrative_max_tokens: int = 1024
+
     log_requests: bool = True
 
     model_config = {"env_prefix": "CORR_", "env_file": ".env", "extra": "ignore"}
@@ -21,6 +26,10 @@ class Settings(BaseSettings):
     @property
     def neo4j_enabled(self) -> bool:
         return bool(self.neo4j_uri and self.neo4j_password)
+
+    @property
+    def gemini_enabled(self) -> bool:
+        return bool(self.gemini_api_key)
 
 
 settings = Settings()
