@@ -1,0 +1,35 @@
+{
+  "approach": "A_day8_contract_smoke",
+  "cases": [
+    {
+      "case": "synthetic_portscan",
+      "contract_ok": true,
+      "label_mapped": true,
+      "attribution": {
+        "mitre_technique_id": "T1046",
+        "mitre_tactic": "Discovery",
+        "technique_name": "Network Service Discovery",
+        "matched_campaign": "CICIDS2017-PortScan",
+        "confidence": 99.5
+      },
+      "predicted_attack": null,
+      "skipped": false,
+      "error": null
+    },
+    {
+      "case": "csv_portscan_row",
+      "contract_ok": true,
+      "label_mapped": true,
+      "attribution": {
+        "mitre_technique_id": "T1046",
+        "mitre_tactic": "Discovery",
+        "technique_name": "Network Service Discovery",
+        "matched_campaign": "CICIDS2017-PortScan",
+        "confidence": 99.91745522534006
+      },
+      "predicted_attack": "PortScan",
+      "skipped": false,
+      "error": null
+    }
+  ]
+}

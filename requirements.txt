@@ -10,3 +10,6 @@ pydantic-settings>=2.6
 numpy>=2.1
 scikit-learn>=1.5
 neo4j>=5.20
+supabase>=2.0
+python-jose[cryptography]>=3.3
+google-generativeai>=0.8
