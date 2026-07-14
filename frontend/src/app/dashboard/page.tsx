@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -25,7 +25,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { IS_MOCK_MODE } from "@/lib/api-client";
+import { IS_MOCK_MODE, apiGet } from "@/lib/api-client";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import { MetricCard } from "@/components/shared/MetricCard";
@@ -95,6 +95,7 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<AnomalyListItem[]>([]);
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; links: GraphLink[] } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
   // Dynamic Audit Logs state so we can add logs in real-time
@@ -138,29 +139,30 @@ export default function DashboardPage() {
   ]);
 
   // Fetch initial mock alerts & graph data
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const [alertsRes, graphRes] = await Promise.all([
-          fetch("/api/alerts"),
-          fetch("/api/graph"),
-        ]);
-        const alertsJson = await alertsRes.json();
-        const graphJson = await graphRes.json();
-        if (alertsJson.success) setAlerts(alertsJson.data);
-        if (graphJson.success) setGraphData(graphJson.data);
-        
-        // Seed default audit logs
-        setAuditLogs(AUDIT_LOGS);
-      } catch (err) {
-        console.error("Error fetching dashboard data", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const [alertsData, graphDataRes] = await Promise.all([
+        apiGet<AnomalyListItem[]>("/anomalies"),
+        apiGet<{ nodes: GraphNode[]; links: GraphLink[] }>("/graph")
+      ]);
+      setAlerts(alertsData);
+      setGraphData(graphDataRes);
+      
+      // Seed default audit logs
+      setAuditLogs(prev => prev.length === 0 ? AUDIT_LOGS : prev);
+    } catch (err) {
+      console.error("Error fetching dashboard data", err);
+      setFetchError("Unable to connect to telemetry grid");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleUpdateAlertStatus = (anomalyId: string, newStatus: AnomalyListItem["status"]) => {
     setAlerts(prev => prev.map(alert =>
@@ -234,6 +236,9 @@ export default function DashboardPage() {
               alerts={alerts} 
               onUpdateAlertStatus={handleUpdateAlertStatus}
               onAddAuditLog={handleAddAuditLog}
+              loading={loading}
+              error={fetchError}
+              onRetry={fetchData}
             />
           )}
 
@@ -507,9 +512,12 @@ interface AlertsQueueScreenProps {
   alerts: AnomalyListItem[];
   onUpdateAlertStatus: (anomalyId: string, status: AnomalyListItem["status"]) => void;
   onAddAuditLog: (action: string, details: string, type?: "automated" | "manual", status?: "success" | "failed") => void;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }
 
-function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog }: AlertsQueueScreenProps) {
+function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, loading, error, onRetry }: AlertsQueueScreenProps) {
   const [search, setSearch] = useState("");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -574,6 +582,44 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog }: Alert
           {filteredAlerts.length} Alerts Found
         </div>
       </div>
+
+      {/* Error State */}
+      {error && (
+        <div className="rounded-[20px] border border-border bg-card p-8 flex flex-col items-center justify-center text-center space-y-4 mb-6 shadow-sm">
+          <div className="h-12 w-12 rounded-full bg-cyber-danger/10 flex items-center justify-center mb-2">
+            <AlertTriangle className="h-6 w-6 text-cyber-danger" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-foreground">Unable to connect to telemetry grid</h3>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+              We couldn't retrieve the latest infrastructure telemetry. Check the connection and try again.
+            </p>
+          </div>
+          <button
+            onClick={onRetry}
+            disabled={loading}
+            className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {loading ? "Retrying..." : "Retry Connection"}
+          </button>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!error && !loading && alerts.length === 0 && (
+        <div className="rounded-[20px] border border-border bg-card p-12 flex flex-col items-center justify-center text-center space-y-4 mb-6 shadow-sm">
+          <div className="h-16 w-16 rounded-full bg-cyber-green/10 flex items-center justify-center mb-2">
+            <Shield className="h-8 w-8 text-cyber-green" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-foreground">Zero active threats detected</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Infrastructure nominal. No active anomalies require attention.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Filters & Search Row */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -1322,17 +1368,24 @@ interface IncidentResponseScreenProps {
 }
 
 function IncidentResponseScreen({ incidents, onResolveIncident }: IncidentResponseScreenProps) {
-  const [runningPlaybookId, setRunningPlaybookId] = useState<string | null>(null);
+  const [processingAction, setProcessingAction] = useState<{ id: string; action: "approved" | "dismissed" } | null>(null);
 
   const handleAction = async (id: string, action: "approved" | "dismissed") => {
-    if (action === "approved") {
-      setRunningPlaybookId(id);
-      setTimeout(() => {
-        onResolveIncident(id, "approved");
-        setRunningPlaybookId(null);
-      }, 1500);
-    } else {
-      onResolveIncident(id, "dismissed");
+    if (processingAction) return;
+    setProcessingAction({ id, action });
+    try {
+      await new Promise(r => setTimeout(r, 1000));
+      onResolveIncident(id, action);
+      if (action === "approved") {
+        toast.success("Mitigation authorized successfully.");
+      } else {
+        toast.success("Risk dismissed successfully.");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Action failed unexpectedly.";
+      toast.error(message);
+    } finally {
+      setProcessingAction(null);
     }
   };
 
@@ -1390,27 +1443,28 @@ function IncidentResponseScreen({ incidents, onResolveIncident }: IncidentRespon
                 </div>
               </div>
 
-              {runningPlaybookId === inc.id ? (
-                <div className="flex items-center justify-center py-2 space-y-2 gap-2 text-xs">
-                  <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                  <span className="font-mono text-muted-foreground">Executing SOAR containment playbook...</span>
-                </div>
-              ) : (
-                <div className="flex gap-2 justify-end pt-2">
-                  <button
-                    onClick={() => handleAction(inc.id, "dismissed")}
-                    className="px-4 py-2 border border-border hover:bg-white/[0.04] text-xs font-semibold rounded-xl transition-all"
-                  >
-                    Dismiss Risk
-                  </button>
-                  <button
-                    onClick={() => handleAction(inc.id, "approved")}
-                    className="px-5 py-2 bg-primary hover:bg-primary/95 text-primary-foreground text-xs font-bold rounded-xl transition-all shadow-[0_3px_8px_rgba(234,88,12,0.12)]"
-                  >
-                    Authorize Mitigation
-                  </button>
-                </div>
-              )}
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  onClick={() => handleAction(inc.id, "dismissed")}
+                  disabled={processingAction?.id === inc.id}
+                  className="flex items-center gap-2 px-4 py-2 border border-border hover:bg-white/[0.04] text-xs font-semibold rounded-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {processingAction?.id === inc.id && processingAction?.action === "dismissed" && (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  )}
+                  Dismiss Risk
+                </button>
+                <button
+                  onClick={() => handleAction(inc.id, "approved")}
+                  disabled={processingAction?.id === inc.id}
+                  className="flex items-center gap-2 px-5 py-2 bg-primary hover:bg-primary/95 text-primary-foreground text-xs font-bold rounded-xl transition-all shadow-[0_3px_8px_rgba(234,88,12,0.12)] disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {processingAction?.id === inc.id && processingAction?.action === "approved" && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  )}
+                  Authorize Mitigation
+                </button>
+              </div>
             </div>
           ))
         ) : (
