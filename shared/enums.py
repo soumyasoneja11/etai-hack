@@ -18,6 +18,17 @@ MitreTactic = Literal[
     "exfiltration",
     "impact",
 ]
+DecisionLevel = Literal["auto_execute", "recommend", "alert_only", "monitor"]
+SOARStatus = Literal["pending", "executed", "failed", "simulated"]
+AuditActionType = Literal[
+    "isolate_endpoint",
+    "block_ip",
+    "revoke_credential",
+    "narrative_generated",
+    "decision_computed",
+    "human_approved",
+    "human_rejected",
+]
 
 # CICIDS2017 label → display title for anomalies
 ATTACK_TITLES: dict[str, str] = {
