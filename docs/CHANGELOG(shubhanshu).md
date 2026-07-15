@@ -5,6 +5,75 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.1] — 2026-07-15
+
+### Summary
+
+Full **development environment setup**: installed all Python and Node dependencies, added **CORS middleware** to both FastAPI backend services so the Next.js frontend can communicate with them, verified `.env` configuration, and smoke-tested all running services and API routes end-to-end.
+
+---
+
+### Added
+
+#### CORS Middleware
+- [`ingestion_detection/main.py`](../ingestion_detection/main.py) — added `CORSMiddleware` from `fastapi.middleware.cors` allowing:
+  - Origins: `http://localhost:3000`, `http://127.0.0.1:3000`
+  - Credentials: enabled
+  - Methods & Headers: all (`*`)
+- [`correlation_response/main.py`](../correlation_response/main.py) — same CORS configuration applied
+- Both servers now return proper `Access-Control-Allow-Origin` and `Access-Control-Allow-Credentials` headers on preflight `OPTIONS` requests
+
+### Changed
+
+#### Dependencies Installed
+- **Python** (`pip install -e .`) — installed 21 packages:
+  - `lightgbm 4.6.0`, `pyarrow 25.0.0`, `openpyxl 3.1.5`, `seaborn 0.13.2`
+  - `neo4j 6.2.0`, `google-generativeai 0.8.6`
+  - `grpcio 1.82.1`, `protobuf 5.29.6`, `proto-plus 1.28.1`
+  - `google-api-core 2.25.2`, `google-api-python-client 2.198.0`
+  - `google-auth 2.56.0`, `google-auth-httplib2 0.4.0`
+  - `httplib2 0.32.0`, `uritemplate 4.2.0`, `et-xmlfile 2.0.0`
+  - `pyasn1-modules 0.4.2`, `googleapis-common-protos 1.75.0`, `grpcio-status 1.71.2`
+  - `etai-hack 0.1.0` (editable install)
+- **Node.js** (`npm install` in `frontend/`) — installed 725 packages:
+  - Next.js 16, React 19, shadcn, echarts, recharts, framer-motion, lucide-react, etc.
+
+### Verified
+
+#### Environment Variables
+- `.env` confirmed properly configured:
+  - ✅ `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_JWKS_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+  - ✅ `CORR_NEO4J_URI`, `CORR_NEO4J_USER`, `CORR_NEO4J_PASSWORD`
+  - ⚠️ `CORR_GEMINI_API_KEY` — empty (narrative uses template fallback, acceptable)
+
+#### Server Startup
+| Service | Port | Status |
+|---------|------|--------|
+| Ingestion & Detection (A) | `8000` | ✅ Started, `/health` returns `ok` |
+| Correlation & Response (B) | `8001` | ✅ Started, `/health` returns `ok` |
+| Frontend Dashboard (Next.js 16 Turbopack) | `3000` | ✅ Ready in ~1.5s |
+
+#### API Route Smoke Tests
+| Test | Endpoint | Result |
+|------|----------|--------|
+| Health A | `GET /health` (8000) | ✅ `{"status":"ok","service":"ingestion-detection"}` |
+| Health B | `GET /health` (8001) | ✅ `{"status":"ok","service":"correlation-response"}` |
+| CORS Preflight A | `OPTIONS /health` (8000) | ✅ `access-control-allow-origin: http://localhost:3000` |
+| CORS Preflight B | `OPTIONS /health` (8001) | ✅ `access-control-allow-origin: http://localhost:3000` |
+| Signup | `POST /api/v1/auth/signup` | ✅ User `testuser@cybershield.local` created |
+| Login | `POST /api/v1/auth/login` | ✅ JWT access token returned |
+| Signals List | `GET /api/v1/signals` (auth) | ✅ `{"items":[], "total":0}` |
+| Anomalies List | `GET /api/v1/anomalies` (auth) | ✅ `{"items":[], "total":0}` |
+
+### Unchanged
+- **ML pipeline** — preprocessing, training, prediction logic untouched
+- **Shared schemas** — all Pydantic models unchanged
+- **Supabase tables** — no migration changes
+- **Neo4j graph** — technique seeding and relationships untouched
+- **All existing API endpoints** — logic unchanged, only CORS middleware added at app level
+
+---
+
 ## [0.3.0] — 2026-07-13
 
 ### Summary
