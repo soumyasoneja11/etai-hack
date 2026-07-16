@@ -10,7 +10,10 @@ import httpx
 from fastapi import Depends, HTTPException, Request
 from jose import JWTError, jwt
 
-from shared.supabase_config import supabase_settings
+try:
+    from .supabase_config import supabase_settings
+except ImportError:
+    from shared.supabase_config import supabase_settings
 
 logger = logging.getLogger(__name__)
 
