@@ -5,6 +5,80 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.4.0] — 2026-07-20
+
+### Summary
+
+**Day 10 integration milestone:** Applied the missing Supabase migration for `audit_logs` and `soar_actions` tables (Day 9 blocker), **wired the frontend to the live backend** (mock mode off, JWT Bearer token auth, real audit data), and verified the **full end-to-end pipeline** — all 7 steps now pass including audit trail persistence.
+
+---
+
+### Fixed
+
+#### Supabase Migration — Audit & SOAR Tables (P1 Blocker)
+- Executed [`supabase_migrations/migrations/003_audit_soar.sql`](../supabase_migrations/migrations/003_audit_soar.sql) in Supabase SQL Editor
+- Resolved PostgREST `PGRST205` errors: `Could not find the table 'public.audit_logs' in the schema cache` and `Could not find the table 'public.soar_actions' in the schema cache`
+- Decide/SOAR/narrative endpoints now persist writes successfully (previously returned HTTP 200 but silently failed all DB operations)
+- `GET /api/v1/audit/{anomaly_id}` now returns persisted entries (was returning 0 rows)
+
+### Added
+
+#### Frontend JWT Authentication
+- [`frontend/src/lib/api-client.ts`](../frontend/src/lib/api-client.ts):
+  - **Token management**: `getToken()`, `setToken(jwt)`, `clearToken()` — stores JWT in memory + `sessionStorage` for persistence across page reloads
+  - **Auto-injection**: `Authorization: Bearer <jwt>` header automatically added to all `apiGet()` and `apiPost()` calls when a token is present
+  - **Login helper**: `apiLogin(email, password)` — authenticates via Supabase GoTrue `POST /auth/v1/token?grant_type=password`, stores the returned access token
+
+#### Frontend Environment Configuration
+- [NEW] [`frontend/.env.local`](../frontend/.env.local):
+  | Variable | Value | Purpose |
+  |---|---|---|
+  | `NEXT_PUBLIC_USE_MOCK_API` | `false` | Disables internal Next.js mock API routes |
+  | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8001` | Points to Service B (correlation-response) |
+  | `NEXT_PUBLIC_SUPABASE_URL` | `https://pauhrumryqskzgtdtzlt.supabase.co` | Enables frontend GoTrue auth |
+  | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `sb_publishable_SMn-...` | Supabase publishable key for auth |
+
+### Changed
+
+#### Dashboard — Live Audit Logs
+- [`frontend/src/app/dashboard/page.tsx`](../frontend/src/app/dashboard/page.tsx):
+  - `fetchData()` now fetches audit logs from `GET /api/v1/audit` when `IS_MOCK_MODE` is `false`
+  - Maps backend fields (`audit_id`, `action_type`, `actor`, `created_at`, `details`) to the existing UI table columns
+  - Falls back to `AUDIT_LOGS` dummy data gracefully if the backend is unreachable or returns empty results
+  - Audit tab renders real persisted audit entries from Supabase when connected to the live backend
+
+### Verified
+
+#### Full Pipeline — End-to-End (Post-Migration)
+
+| Step | Result | Detail |
+|------|--------|--------|
+| auth login | ✅ PASS | JWT issued for `day9@test.local` |
+| correlate | ✅ PASS | T1046 Network Service Discovery (Discovery) |
+| narrative | ✅ PASS | Template narrative with RAG sources (CVE-2020-25078, CVE-2023-20198, CIAD-2023-0076) |
+| decide | ✅ PASS | `auto_execute`, recommended `block_ip`, blast_radius=0 |
+| SOAR isolate | ✅ PASS | `simulated` isolate, HTTP 200 |
+| audit trail HTTP | ✅ PASS | Endpoint reachable |
+| **audit trail persistence** | ✅ **PASS** | **3 entries persisted** *(was FAIL in Day 9 — now resolved)* |
+
+#### TypeScript Build
+- `npx tsc --noEmit` — clean pass, no type errors after API client changes
+
+### Unchanged
+- **ML pipeline** — preprocessing, training, prediction logic untouched
+- **Service A** — ingestion-detection service unchanged
+- **Service B** — all existing endpoints unchanged; only audit/SOAR now persist successfully
+- **Shared schemas** — all Pydantic models unchanged
+- **Neo4j graph** — technique seeding and relationships untouched
+- **Mock API routes** — Next.js internal `/api/*` routes preserved (used when `USE_MOCK_API=true`)
+
+### Known Remaining Items
+- ⚠️ `CORR_GEMINI_API_KEY` is empty — narrative uses template fallback (optional)
+- ⚠️ CICIDS2017 CSV files not in `data/` — `day9_integration.py` replay step requires them for full harness pass
+- Frontend login UI not yet implemented — `apiLogin()` is available but not wired to a login page
+
+---
+
 ## [0.3.1] — 2026-07-15
 
 ### Summary

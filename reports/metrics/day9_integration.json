@@ -1,13 +1,13 @@
 {
   "approach": "day9_integration",
-  "started_at": "2026-07-20T15:25:58.380685Z",
-  "finished_at": "2026-07-20T15:26:21.477900Z",
-  "overall_pass": true,
+  "started_at": "2026-07-20T17:09:56.111788Z",
+  "finished_at": "2026-07-20T17:10:00.306652Z",
+  "overall_pass": false,
   "steps": [
     {
       "name": "A health",
       "ok": true,
-      "at": "2026-07-20T15:25:59.368025Z",
+      "at": "2026-07-20T17:09:56.652424Z",
       "detail": {
         "status": "ok",
         "service": "ingestion-detection"
@@ -16,7 +16,7 @@
     {
       "name": "B health",
       "ok": true,
-      "at": "2026-07-20T15:25:59.372762Z",
+      "at": "2026-07-20T17:09:56.687152Z",
       "detail": {
         "status": "ok",
         "service": "correlation-response"
@@ -25,7 +25,7 @@
     {
       "name": "auth signup",
       "ok": true,
-      "at": "2026-07-20T15:25:59.844200Z",
+      "at": "2026-07-20T17:09:58.777973Z",
       "detail": {
         "status_code": 400,
         "body": {
@@ -36,8 +36,8 @@
             "message": "A user with this email address has already been registered"
           },
           "meta": {
-            "timestamp": "2026-07-20T15:25:59.842490Z",
-            "request_id": "8a926a6a-162e-434a-b07b-ff859068e0c0"
+            "timestamp": "2026-07-20T17:09:58.777254Z",
+            "request_id": "16999d10-8034-442b-9016-3462f666c5b2"
           }
         }
       }
@@ -45,7 +45,7 @@
     {
       "name": "auth login",
       "ok": true,
-      "at": "2026-07-20T15:26:00.438356Z",
+      "at": "2026-07-20T17:10:00.288187Z",
       "detail": {
         "status_code": 200,
         "user": {
@@ -58,90 +58,14 @@
     },
     {
       "name": "replay PortScan -> A ingest",
-      "ok": true,
-      "at": "2026-07-20T15:26:08.697328Z",
-      "detail": {
-        "max_rows": 3,
-        "exit_code": 0
-      }
-    },
-    {
-      "name": "fetch attack signal from A",
-      "ok": true,
-      "at": "2026-07-20T15:26:09.607848Z",
-      "detail": {
-        "signals_fetched": 6,
-        "signal_id": "ebe0005a-cb05-4a9c-a411-79a65d92f657",
-        "attack": "PortScan"
-      }
-    },
-    {
-      "name": "B correlate -> MITRE + anomaly",
-      "ok": true,
-      "at": "2026-07-20T15:26:16.328847Z",
-      "detail": {
-        "anomaly_id": "413b16c6-cfb4-4b5a-b3c0-e23c31087835",
-        "mitre_technique_id": "T1046",
-        "mitre_tactic": "Discovery",
-        "technique_name": "Network Service Discovery",
-        "decision": "auto_execute"
-      }
-    },
-    {
-      "name": "narrative (Gemini optional / template fallback)",
-      "ok": true,
-      "at": "2026-07-20T15:26:17.452315Z",
-      "detail": {
-        "anomaly_id": "413b16c6-cfb4-4b5a-b3c0-e23c31087835",
-        "sources": [
-          "CVE-2020-25078",
-          "CVE-2023-20198",
-          "CIAD-2023-0076"
-        ],
-        "narrative_preview": "**Detection Summary**: The ML detection pipeline identified **PortScan** activity on asset `dst-80-win-29200` with **99.9%** confidence. This anomaly was flagged based on statistical deviation from established baseline behavior patterns.\n\n*..."
-      }
-    },
-    {
-      "name": "decide",
-      "ok": true,
-      "at": "2026-07-20T15:26:18.528238Z",
-      "detail": {
-        "decision": "auto_execute",
-        "recommended_action": "block_ip",
-        "blast_radius": 0,
-        "requires_human_approval": false
-      }
-    },
-    {
-      "name": "mock SOAR isolate",
-      "ok": true,
-      "at": "2026-07-20T15:26:21.149577Z",
-      "detail": {
-        "action_id": "b61dc6bf-877a-4f03-bc1e-f310ddff862d",
-        "action_type": "isolate_endpoint",
-        "status": "simulated",
-        "target": "dst-80-win-29200"
-      }
-    },
-    {
-      "name": "audit trail",
-      "ok": true,
-      "at": "2026-07-20T15:26:21.477707Z",
-      "detail": {
-        "anomaly_id": "413b16c6-cfb4-4b5a-b3c0-e23c31087835",
-        "entry_count": 0,
-        "persisted": false
-      }
+      "ok": false,
+      "at": "2026-07-20T17:10:00.306620Z",
+      "error": "[Errno 2] No such file or directory: 'E:\\\\etai-hack\\\\data\\\\Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv'"
     }
   ],
   "bugs": [
-    "GET /api/v1/audit/{id} returned 0 entries \u2014 apply supabase_migrations/migrations/003_audit_soar.sql (tables audit_logs + soar_actions missing in Supabase)."
+    "Replay ingest failed (auth header or model/features)."
   ],
-  "pipeline_ids": {
-    "signal_id": "ebe0005a-cb05-4a9c-a411-79a65d92f657",
-    "anomaly_id": "413b16c6-cfb4-4b5a-b3c0-e23c31087835",
-    "asset_id": "dst-80-win-29200",
-    "mitre_technique_id": "T1046"
-  },
+  "pipeline_ids": {},
   "json_path": "reports/metrics/day9_integration.json"
 }

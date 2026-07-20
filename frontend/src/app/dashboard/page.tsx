@@ -150,8 +150,26 @@ export default function DashboardPage() {
       setAlerts(alertsData);
       setGraphData(graphDataRes);
       
-      // Seed default audit logs
-      setAuditLogs(prev => prev.length === 0 ? AUDIT_LOGS : prev);
+      // Fetch audit logs: from backend in real mode, dummy data in mock mode
+      if (!IS_MOCK_MODE) {
+        try {
+          const auditRes = await apiGet<{ items: any[] }>("/audit");
+          const mapped = (auditRes.items ?? []).map((row: any) => ({
+            id: row.audit_id ?? row.id,
+            action: row.action_type ?? row.action ?? "unknown",
+            user: row.actor ?? "system",
+            type: row.actor === "system" ? "automated" : "manual",
+            timestamp: row.created_at ?? new Date().toISOString(),
+            details: typeof row.details === "object" ? JSON.stringify(row.details) : (row.details ?? ""),
+            status: row.status ?? "success",
+          }));
+          setAuditLogs(mapped.length > 0 ? mapped : AUDIT_LOGS);
+        } catch {
+          setAuditLogs(AUDIT_LOGS);
+        }
+      } else {
+        setAuditLogs(prev => prev.length === 0 ? AUDIT_LOGS : prev);
+      }
     } catch (err) {
       console.error("Error fetching dashboard data", err);
       setFetchError("Unable to connect to telemetry grid");

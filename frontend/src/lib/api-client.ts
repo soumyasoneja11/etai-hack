@@ -28,6 +28,45 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 // ---------------------------------------------------------------------------
+// Bearer token management
+// ---------------------------------------------------------------------------
+
+const TOKEN_KEY = "cybershield_jwt";
+
+let _token: string | null = null;
+
+/** Returns the current JWT, falling back to sessionStorage. */
+export function getToken(): string | null {
+  if (_token) return _token;
+  if (typeof window !== "undefined") {
+    _token = sessionStorage.getItem(TOKEN_KEY);
+  }
+  return _token;
+}
+
+/** Stores a JWT in memory and sessionStorage. */
+export function setToken(jwt: string): void {
+  _token = jwt;
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem(TOKEN_KEY, jwt);
+  }
+}
+
+/** Clears the stored JWT. */
+export function clearToken(): void {
+  _token = null;
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem(TOKEN_KEY);
+  }
+}
+
+/** Builds the Authorization header if a token is available. */
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// ---------------------------------------------------------------------------
 // Custom error class
 // ---------------------------------------------------------------------------
 
@@ -114,6 +153,7 @@ export async function apiGet<T>(
       method: "GET",
       headers: {
         Accept: "application/json",
+        ...authHeaders(),
         ...options.headers,
       },
       signal: options.signal,
@@ -181,6 +221,7 @@ export async function apiPost<T>(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        ...authHeaders(),
         ...options.headers,
       },
       body: JSON.stringify(body),
@@ -223,4 +264,49 @@ export async function apiPost<T>(
   }
 
   return envelope.data as T;
+}
+
+// ---------------------------------------------------------------------------
+// Auth helpers — Supabase GoTrue login
+// ---------------------------------------------------------------------------
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+
+/**
+ * Sign in with Supabase email/password, store the JWT, and return it.
+ * This calls the GoTrue `/auth/v1/token?grant_type=password` endpoint directly.
+ */
+export async function apiLogin(email: string, password: string): Promise<string> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new ApiError(
+      "Supabase credentials not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+      0,
+      null,
+    );
+  }
+
+  const url = `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new ApiError(`Supabase login failed: ${text}`, response.status, null);
+  }
+
+  const data = await response.json();
+  const jwt = data.access_token;
+  if (!jwt) {
+    throw new ApiError("No access_token in Supabase response", 500, null);
+  }
+
+  setToken(jwt);
+  return jwt;
 }
