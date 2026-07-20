@@ -4,12 +4,14 @@ Replay CICIDS2017 rows to A's ingest API (CyberShield-aligned).
 Usage:
   python -m ingestion_detection.replay.replay
   python -m ingestion_detection.replay.replay --scenario portscan --max-rows 50
+  python -m ingestion_detection.replay.replay --token <JWT> --max-rows 5
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 import time
 from datetime import datetime, timezone
 
@@ -89,6 +91,12 @@ def _parse_ingest_response(body: dict) -> tuple[str | None, str | None]:
     return body.get("event_id") or body.get("signal_id"), None
 
 
+def _auth_headers(token: str | None) -> dict[str, str]:
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
+
+
 def replay(
     *,
     ingest_url: str,
@@ -98,15 +106,18 @@ def replay(
     phase: str,
     dry_run: bool,
     score_on_ingest: bool,
+    token: str | None = None,
 ) -> int:
     scenario = get_scenario(scenario_name)
     slice_df, feature_columns, begin, end = iter_replay_rows(
         scenario, max_rows=max_rows, phase=phase
     )
+    headers = _auth_headers(token)
 
     logger.info(
-        "scenario=%s phase=%s rows=[%s,%s) count=%s url=%s",
+        "scenario=%s phase=%s rows=[%s,%s) count=%s url=%s auth=%s",
         scenario.name, phase, begin, end, len(slice_df), ingest_url,
+        "yes" if token else "no",
     )
 
     sent = failed = 0
@@ -135,6 +146,7 @@ def replay(
                     ingest_url,
                     json=signal.model_dump(mode="json"),
                     params=params,
+                    headers=headers,
                 )
                 response.raise_for_status()
                 sid, attack = _parse_ingest_response(response.json())
@@ -164,6 +176,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--phase", choices=["attack", "baseline", "all"], default="attack")
     parser.add_argument("--no-score", action="store_true", help="Ingest only, skip ML scoring")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--token",
+        default=os.environ.get("AUTH_TOKEN"),
+        help="Supabase JWT (or set AUTH_TOKEN). Required for authenticated ingest.",
+    )
     args = parser.parse_args(argv)
 
     return replay(
@@ -174,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
         phase=args.phase,
         dry_run=args.dry_run,
         score_on_ingest=not args.no_score,
+        token=args.token,
     )
 
 

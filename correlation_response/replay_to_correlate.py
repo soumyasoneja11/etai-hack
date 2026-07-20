@@ -2,7 +2,7 @@
 Replay bridge — read detections from A's signal queue, feed into B's correlate.
 
 Usage:
-  python -m correlation_response.replay_to_correlate
+  python -m correlation_response.replay_to_correlate --token <JWT>
   python -m correlation_response.replay_to_correlate --signals-url http://127.0.0.1:8000/api/v1/signals --limit 10
 """
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import time
 
 import httpx
@@ -21,10 +22,16 @@ DEFAULT_SIGNALS_URL = "http://127.0.0.1:8000/api/v1/signals"
 DEFAULT_CORRELATE_URL = "http://127.0.0.1:8001/api/v1/correlate"
 
 
-def fetch_signals(url: str, limit: int) -> list[dict]:
+def _auth_headers(token: str | None) -> dict[str, str]:
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
+
+
+def fetch_signals(url: str, limit: int, token: str | None = None) -> list[dict]:
     """GET recent signals from A's signal queue."""
     with httpx.Client(timeout=30.0) as client:
-        resp = client.get(url, params={"limit": limit})
+        resp = client.get(url, params={"limit": limit}, headers=_auth_headers(token))
         resp.raise_for_status()
         body = resp.json()
 
@@ -37,10 +44,18 @@ def fetch_signals(url: str, limit: int) -> list[dict]:
     return items
 
 
-def send_to_correlate(correlate_url: str, detection: dict) -> dict | None:
+def send_to_correlate(
+    correlate_url: str,
+    detection: dict,
+    token: str | None = None,
+) -> dict | None:
     """POST a detection to B's correlate endpoint."""
     with httpx.Client(timeout=30.0) as client:
-        resp = client.post(correlate_url, json=detection)
+        resp = client.post(
+            correlate_url,
+            json=detection,
+            headers=_auth_headers(token),
+        )
         resp.raise_for_status()
         body = resp.json()
 
@@ -57,9 +72,10 @@ def replay(
     correlate_url: str,
     limit: int,
     delay_sec: float,
+    token: str | None = None,
 ) -> int:
     """Main replay loop: fetch signals from A → correlate via B."""
-    signals = fetch_signals(signals_url, limit)
+    signals = fetch_signals(signals_url, limit, token=token)
 
     if not signals:
         logger.warning("No signals to replay")
@@ -81,7 +97,7 @@ def replay(
             continue
 
         try:
-            result = send_to_correlate(correlate_url, detection)
+            result = send_to_correlate(correlate_url, detection, token=token)
             if result:
                 logger.info(
                     "correlated signal=%s attack=%s → %s (%s) anomaly=%s",
@@ -122,6 +138,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--limit", type=int, default=5, help="Number of signals to fetch")
     parser.add_argument("--delay", type=float, default=0.5, help="Delay between requests (s)")
+    parser.add_argument(
+        "--token",
+        default=os.environ.get("AUTH_TOKEN"),
+        help="Supabase JWT (or set AUTH_TOKEN). Required for A signals + B correlate.",
+    )
     args = parser.parse_args(argv)
 
     return replay(
@@ -129,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         correlate_url=args.correlate_url,
         limit=args.limit,
         delay_sec=args.delay,
+        token=args.token,
     )
 
 

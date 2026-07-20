@@ -1,0 +1,147 @@
+{
+  "approach": "day9_integration",
+  "started_at": "2026-07-20T15:25:58.380685Z",
+  "finished_at": "2026-07-20T15:26:21.477900Z",
+  "overall_pass": true,
+  "steps": [
+    {
+      "name": "A health",
+      "ok": true,
+      "at": "2026-07-20T15:25:59.368025Z",
+      "detail": {
+        "status": "ok",
+        "service": "ingestion-detection"
+      }
+    },
+    {
+      "name": "B health",
+      "ok": true,
+      "at": "2026-07-20T15:25:59.372762Z",
+      "detail": {
+        "status": "ok",
+        "service": "correlation-response"
+      }
+    },
+    {
+      "name": "auth signup",
+      "ok": true,
+      "at": "2026-07-20T15:25:59.844200Z",
+      "detail": {
+        "status_code": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "error": {
+            "code": "BAD_REQUEST",
+            "message": "A user with this email address has already been registered"
+          },
+          "meta": {
+            "timestamp": "2026-07-20T15:25:59.842490Z",
+            "request_id": "8a926a6a-162e-434a-b07b-ff859068e0c0"
+          }
+        }
+      }
+    },
+    {
+      "name": "auth login",
+      "ok": true,
+      "at": "2026-07-20T15:26:00.438356Z",
+      "detail": {
+        "status_code": 200,
+        "user": {
+          "id": "caca078d-6026-4f03-87b0-8a17f18cf1fe",
+          "email": "day9@test.local",
+          "role": "user"
+        },
+        "token_prefix": "eyJhbGciOiJFUzI1..."
+      }
+    },
+    {
+      "name": "replay PortScan -> A ingest",
+      "ok": true,
+      "at": "2026-07-20T15:26:08.697328Z",
+      "detail": {
+        "max_rows": 3,
+        "exit_code": 0
+      }
+    },
+    {
+      "name": "fetch attack signal from A",
+      "ok": true,
+      "at": "2026-07-20T15:26:09.607848Z",
+      "detail": {
+        "signals_fetched": 6,
+        "signal_id": "ebe0005a-cb05-4a9c-a411-79a65d92f657",
+        "attack": "PortScan"
+      }
+    },
+    {
+      "name": "B correlate -> MITRE + anomaly",
+      "ok": true,
+      "at": "2026-07-20T15:26:16.328847Z",
+      "detail": {
+        "anomaly_id": "413b16c6-cfb4-4b5a-b3c0-e23c31087835",
+        "mitre_technique_id": "T1046",
+        "mitre_tactic": "Discovery",
+        "technique_name": "Network Service Discovery",
+        "decision": "auto_execute"
+      }
+    },
+    {
+      "name": "narrative (Gemini optional / template fallback)",
+      "ok": true,
+      "at": "2026-07-20T15:26:17.452315Z",
+      "detail": {
+        "anomaly_id": "413b16c6-cfb4-4b5a-b3c0-e23c31087835",
+        "sources": [
+          "CVE-2020-25078",
+          "CVE-2023-20198",
+          "CIAD-2023-0076"
+        ],
+        "narrative_preview": "**Detection Summary**: The ML detection pipeline identified **PortScan** activity on asset `dst-80-win-29200` with **99.9%** confidence. This anomaly was flagged based on statistical deviation from established baseline behavior patterns.\n\n*..."
+      }
+    },
+    {
+      "name": "decide",
+      "ok": true,
+      "at": "2026-07-20T15:26:18.528238Z",
+      "detail": {
+        "decision": "auto_execute",
+        "recommended_action": "block_ip",
+        "blast_radius": 0,
+        "requires_human_approval": false
+      }
+    },
+    {
+      "name": "mock SOAR isolate",
+      "ok": true,
+      "at": "2026-07-20T15:26:21.149577Z",
+      "detail": {
+        "action_id": "b61dc6bf-877a-4f03-bc1e-f310ddff862d",
+        "action_type": "isolate_endpoint",
+        "status": "simulated",
+        "target": "dst-80-win-29200"
+      }
+    },
+    {
+      "name": "audit trail",
+      "ok": true,
+      "at": "2026-07-20T15:26:21.477707Z",
+      "detail": {
+        "anomaly_id": "413b16c6-cfb4-4b5a-b3c0-e23c31087835",
+        "entry_count": 0,
+        "persisted": false
+      }
+    }
+  ],
+  "bugs": [
+    "GET /api/v1/audit/{id} returned 0 entries \u2014 apply supabase_migrations/migrations/003_audit_soar.sql (tables audit_logs + soar_actions missing in Supabase)."
+  ],
+  "pipeline_ids": {
+    "signal_id": "ebe0005a-cb05-4a9c-a411-79a65d92f657",
+    "anomaly_id": "413b16c6-cfb4-4b5a-b3c0-e23c31087835",
+    "asset_id": "dst-80-win-29200",
+    "mitre_technique_id": "T1046"
+  },
+  "json_path": "reports/metrics/day9_integration.json"
+}

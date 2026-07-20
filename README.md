@@ -12,7 +12,8 @@ python -m ingestion_detection.preprocess       # clean + split
 python -m ingestion_detection.train            # train LightGBM (~5 min)
 python -m ingestion_detection.baseline.builder # pre-attack baselines
 python -m ingestion_detection.main             # API :8000
-python -m ingestion_detection.replay.replay --max-rows 20
+python -m correlation_response.main            # API :8001
+python scripts/day9_integration.py             # Day 9 A→B pipeline + report
 ```
 
 ## Documentation
@@ -21,6 +22,7 @@ python -m ingestion_detection.replay.replay --max-rows 20
 |-----|-------------|
 | [API_CONTRACT.md](docs/API_CONTRACT.md) | CyberShield-aligned schemas |
 | [CyberShield_NIC_API_Schema.xlsx](docs/CyberShield_NIC_API_Schema.xlsx) | Team API source of truth |
+| [DAY9_INTEGRATION_REPORT.md](docs/DAY9_INTEGRATION_REPORT.md) | Day 9 end-to-end integration results |
 | [PREPROCESSING.md](docs/PREPROCESSING.md) | Data cleaning steps |
 | [BASELINE.md](docs/BASELINE.md) | Baseline profiling rules |
 | [THRESHOLDS.md](docs/THRESHOLDS.md) | Day 6 threshold evidence |
@@ -36,7 +38,7 @@ data/                  # CICIDS2017 CSVs + processed/ + threat_intel/
 reports/               # Generated EDA + metrics artifacts
 docs/                  # Contracts, plans, ML docs
 tests/fixtures/        # Golden A→B payloads
-supabase/migrations/   # DB schema
+supabase_migrations/migrations/   # DB schema
 ```
 
 ## Model results
