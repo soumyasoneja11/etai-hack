@@ -33,6 +33,7 @@ from ingestion_detection.supabase_store import signal_store
 from shared.auth import ScopedContext, require_admin, require_auth, require_scoped
 from shared.cors import get_cors_allowed_origins
 from shared.envelope import error_response, success_response
+from shared.errors import StoreUnavailableError
 from shared.rate_limit import SlidingWindowRateLimiter
 from shared.schemas import (
     BaselineManifest,
@@ -122,6 +123,20 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content=error_response(code, str(exc.detail)),
+    )
+
+
+@app.exception_handler(StoreUnavailableError)
+async def store_unavailable_handler(request: Request, exc: StoreUnavailableError):
+    # A read/query genuinely failed (DB down) — surface 503 rather than a silent
+    # empty list, so the frontend can show a visible "failed to load" state.
+    logger.error("datastore unavailable on %s: %s", request.url.path, exc)
+    return JSONResponse(
+        status_code=503,
+        content=error_response(
+            "SERVICE_UNAVAILABLE",
+            "Backend datastore is unavailable. Please retry shortly.",
+        ),
     )
 
 

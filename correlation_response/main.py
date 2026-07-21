@@ -18,6 +18,7 @@ from correlation_response.supabase_store import anomaly_store
 from shared.auth import ScopedContext, require_scoped
 from shared.cors import get_cors_allowed_origins
 from shared.envelope import error_response, success_response
+from shared.errors import StoreUnavailableError
 from shared.schemas import (
     BlockRequest,
     DetectionResult,
@@ -69,12 +70,39 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+# Preserve the real status code/error type through the envelope so the frontend
+# can act on it specifically (e.g. trigger re-login on 401/403) instead of
+# seeing every failure collapse to BAD_REQUEST.
+_STATUS_TO_CODE = {
+    401: "UNAUTHORIZED",
+    403: "FORBIDDEN",
+    404: "NOT_FOUND",
+    422: "VALIDATION_ERROR",
+    429: "RATE_LIMITED",
+    503: "SERVICE_UNAVAILABLE",
+}
+
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    code = "NOT_FOUND" if exc.status_code == 404 else "BAD_REQUEST"
+    code = _STATUS_TO_CODE.get(exc.status_code, "BAD_REQUEST")
     return JSONResponse(
         status_code=exc.status_code,
         content=error_response(code, str(exc.detail)),
+    )
+
+
+@app.exception_handler(StoreUnavailableError)
+async def store_unavailable_handler(request: Request, exc: StoreUnavailableError):
+    # A read/query genuinely failed (DB down, bad connection) — surface 503 so
+    # the dashboard shows "failed to load" rather than a silent empty list.
+    logger.error("datastore unavailable on %s: %s", request.url.path, exc)
+    return JSONResponse(
+        status_code=503,
+        content=error_response(
+            "SERVICE_UNAVAILABLE",
+            "Backend datastore is unavailable. Please retry shortly.",
+        ),
     )
 
 

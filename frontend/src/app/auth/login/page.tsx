@@ -19,7 +19,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await apiLogin(email.trim(), password);
-      router.push("/dashboard");
+      const params =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search)
+          : null;
+      const redirect = params?.get("redirect");
+      router.push(redirect && redirect.startsWith("/dashboard") ? redirect : "/dashboard");
     } catch (err) {
       const message =
         err instanceof ApiError

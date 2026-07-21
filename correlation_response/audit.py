@@ -15,6 +15,7 @@ import logging
 from typing import Any
 from uuid import uuid4
 
+from shared.errors import StoreUnavailableError
 from shared.schemas import AuditEntry
 
 logger = logging.getLogger(__name__)
@@ -134,7 +135,7 @@ def get_audit_trail(
         return result.data or []
     except Exception as exc:
         logger.error("Failed to fetch audit trail for %s: %s", anomaly_id, exc)
-        return []
+        raise StoreUnavailableError(f"failed to read audit trail for {anomaly_id}") from exc
 
 
 def list_audit_logs(
@@ -158,7 +159,7 @@ def list_audit_logs(
         return result.data or []
     except Exception as exc:
         logger.error("Failed to list audit logs: %s", exc)
-        return []
+        raise StoreUnavailableError("failed to list audit logs") from exc
 
 
 def list_soar_actions(
@@ -182,7 +183,7 @@ def list_soar_actions(
         return result.data or []
     except Exception as exc:
         logger.error("Failed to list SOAR actions: %s", exc)
-        return []
+        raise StoreUnavailableError("failed to list SOAR actions") from exc
 
 
 def get_soar_action(
@@ -206,4 +207,4 @@ def get_soar_action(
         return rows[0] if rows else None
     except Exception as exc:
         logger.error("Failed to get SOAR action %s: %s", action_id, exc)
-        return None
+        raise StoreUnavailableError(f"failed to read SOAR action {action_id}") from exc

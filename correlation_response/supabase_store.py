@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from shared.errors import StoreUnavailableError
 from shared.supabase_client import get_supabase_admin
 
 logger = logging.getLogger(__name__)
@@ -135,7 +136,7 @@ class SupabaseAnomalyStore:
             return _flatten_anomaly_row(rows[0])
         except Exception as exc:
             logger.error("Failed to get anomaly %s: %s", anomaly_id, exc)
-            return None
+            raise StoreUnavailableError(f"failed to read anomaly {anomaly_id}") from exc
 
     def save_narrative(
         self,
@@ -198,7 +199,7 @@ class SupabaseAnomalyStore:
             return result.data or []
         except Exception as exc:
             logger.error("Failed to list anomalies: %s", exc)
-            return []
+            raise StoreUnavailableError("failed to list anomalies") from exc
 
     def update_status(
         self,
@@ -249,7 +250,7 @@ class SupabaseAnomalyStore:
             return result.data or []
         except Exception as exc:
             logger.error("Failed to list attributions: %s", exc)
-            return []
+            raise StoreUnavailableError("failed to list attributions") from exc
 
     def count(
         self,
@@ -267,7 +268,7 @@ class SupabaseAnomalyStore:
             return result.count or 0
         except Exception as exc:
             logger.error("Failed to count anomalies: %s", exc)
-            return 0
+            raise StoreUnavailableError("failed to count anomalies") from exc
 
 
 # Module-level instance

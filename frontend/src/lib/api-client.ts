@@ -58,6 +58,24 @@ export const API_BASE_URL =
 let _token: string | null = null;
 /** Access-token expiry (epoch ms); 0 when unknown. */
 let _expiresAtMs = 0;
+
+// Client-readable "is logged in" flag. The httpOnly refresh cookie (cs_refresh)
+// is path-scoped to /api/auth and therefore invisible to the /dashboard route
+// guard in middleware.ts, so we also set this non-sensitive presence flag at
+// path=/ on login. It is only a UX gate — real auth is the backend JWT check.
+const SESSION_COOKIE = "cs_session";
+
+function setSessionCookie(): void {
+  if (typeof document !== "undefined") {
+    document.cookie = `${SESSION_COOKIE}=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
+  }
+}
+
+function clearSessionCookie(): void {
+  if (typeof document !== "undefined") {
+    document.cookie = `${SESSION_COOKIE}=; path=/; max-age=0; samesite=lax`;
+  }
+}
 /** De-dupes concurrent refreshes into a single in-flight request. */
 let _refreshInFlight: Promise<string | null> | null = null;
 /** Whether we've attempted the one-shot refresh-on-load yet. */
@@ -87,10 +105,11 @@ export function setToken(jwt: string, expiresAt?: number | null): void {
   _expiresAtMs = expiresAt ? expiresAt * 1000 : decodeExpMs(jwt);
 }
 
-/** Clears the in-memory JWT and best-effort clears the refresh cookie. */
+/** Clears the in-memory JWT and best-effort clears the session/refresh cookies. */
 export function clearToken(): void {
   _token = null;
   _expiresAtMs = 0;
+  clearSessionCookie();
   if (typeof window !== "undefined") {
     // Fire-and-forget: drop the httpOnly refresh cookie server-side.
     void fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
@@ -406,8 +425,20 @@ export async function apiPost<T>(
  * Sign in via the same-origin /api/auth/login route. The server proxies
  * Supabase GoTrue, stores the refresh token in an httpOnly cookie, and returns
  * the access token, which we keep in memory only.
+ *
+ * In mock mode there is no backend, so we accept any credentials and mark a
+ * client session (so the /dashboard route guard lets the analyst in for UI work).
  */
 export async function apiLogin(email: string, password: string): Promise<string> {
+  if (IS_MOCK_MODE) {
+    const mockToken = "mock-session";
+    _token = mockToken;
+    _expiresAtMs = 0;
+    _triedInitialRefresh = true;
+    setSessionCookie();
+    return mockToken;
+  }
+
   const response = await fetch("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -425,6 +456,7 @@ export async function apiLogin(email: string, password: string): Promise<string>
 
   setToken(data.access_token, data.expires_at);
   _triedInitialRefresh = true;
+  setSessionCookie();
   return data.access_token as string;
 }
 

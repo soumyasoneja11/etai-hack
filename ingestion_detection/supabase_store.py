@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from shared.errors import StoreUnavailableError
 from shared.schemas import DetectionResult, SignalIngestRequest, new_event_id, utc_now
 from shared.supabase_client import get_supabase_admin
 
@@ -90,7 +91,7 @@ class SupabaseSignalStore:
             return result.data or []
         except Exception as exc:
             logger.error("Failed to list signals: %s", exc)
-            return []
+            raise StoreUnavailableError("failed to list signals") from exc
 
     def get(
         self,
@@ -114,7 +115,7 @@ class SupabaseSignalStore:
             return rows[0] if rows else None
         except Exception as exc:
             logger.error("Failed to get signal %s: %s", signal_id, exc)
-            return None
+            raise StoreUnavailableError(f"failed to read signal {signal_id}") from exc
 
     def size(
         self,
@@ -131,7 +132,7 @@ class SupabaseSignalStore:
             return result.count or 0
         except Exception as exc:
             logger.error("Failed to count signals: %s", exc)
-            return 0
+            raise StoreUnavailableError("failed to count signals") from exc
 
 
 # Module-level instance (drop-in replacement for signal_queue)
