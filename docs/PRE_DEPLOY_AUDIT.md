@@ -117,3 +117,44 @@ Migrations `001`–`007` all exist, but code requires the later ones the old che
 | P2 | ~8 | Orphaned dummy routes, dummy fallbacks, middleware→proxy, world-atlas CDN, no render.yaml, deprecated worker class, dead code/drift, data bootstrap |
 
 **Bottom line:** the backend + integration layer are solid and deployable with correct env and the full `001`–`007` migration set. The pre-launch work is almost entirely on the **frontend showing only real data** (starting with the default Overview tab) and on **deploy configuration** (env, migrations, free-tier tuning) — not on core code correctness.
+
+---
+
+## Work split for parallel execution (X / Y)
+
+The work is divided **by file ownership** so both people can work at the same time with **zero merge conflicts** — X touches only `frontend/**`, Y touches only backend/DB/infra. The only thing they must agree on up front is the two-value "integration contract" below; after that they work fully independently.
+
+### Owner X — Frontend & Vercel ("show only real data" + FE hardening)
+**Owns:** `frontend/**` and the Vercel deployment.
+
+| # | Issue (from above) | Files |
+|---|--------------------|-------|
+| X1 | **P0-1** — Wire/gate the Overview landing tab so no fabricated data shows in real mode (metrics, gauges, charts, world map, attack timeline, threat feed) | `frontend/src/app/dashboard/page.tsx` (`OverviewScreen`), `frontend/src/lib/dummy-data.ts` |
+| X2 | **P1-1** — Remove fake `cs_live_` API key + hardcoded identity; wire or remove Settings toggles | `frontend/src/app/dashboard/page.tsx` (`ProfileSettingsScreen`) |
+| X3 | **P1-2** — Add root error boundaries | new `frontend/src/app/error.tsx`, `global-error.tsx`, `not-found.tsx` |
+| X4 | **P2** — Remove/wire orphaned dummy routes; surface real screens in nav | `frontend/src/app/dashboard/ai-agents/`, `assets/`, `frontend/src/lib/constants.ts` |
+| X5 | **P2** — Remove dummy fallbacks in real tabs (Audit, topology, notifications bell, Quick Scan) | `frontend/src/app/dashboard/page.tsx`, `frontend/src/components/dashboard/TopNavbar.tsx` |
+| X6 | **P2** — `middleware.ts` → `proxy.ts` (Next 16) | `frontend/src/middleware.ts` |
+| X7 | **P2** — Vendor or remove the `world-atlas` external CDN map | `frontend/src/components/dashboard/charts/WorldThreatMap.tsx` |
+| X8 | **P0-3 (Vercel half)** — Set Vercel env: `NEXT_PUBLIC_USE_MOCK_API=false`, `NEXT_PUBLIC_API_BASE_URL`, `SUPABASE_URL`/`SUPABASE_ANON_KEY` | Vercel dashboard |
+
+### Owner Y — Backend, Database & Deploy infra
+**Owns:** `ingestion_detection/**`, `correlation_response/**`, `shared/**`, `deploy/**`, `supabase_migrations/**`, root `Dockerfile`/`docker-compose.yml`/`requirements.txt`/`pyproject.toml`, and both Render services.
+
+| # | Issue (from above) | Files |
+|---|--------------------|-------|
+| Y1 | **P0-2** — Apply migrations `001`–`007` to the target Supabase; provision first admin (`app_metadata.role=admin`) | `supabase_migrations/migrations/*.sql` (Supabase) |
+| Y2 | **P0-3 (Render/backend half)** — Set `CORRELATION_BASE_URL` (A), `CORS_ALLOWED_ORIGINS` (both) to real values; review localhost defaults | `ingestion_detection/config.py`, `shared/cors.py`, Render dashboard |
+| Y3 | **P1-3** — `WEB_CONCURRENCY=1` for free tier | `Dockerfile`, `deploy/gunicorn_conf.py` / Render env |
+| Y4 | **P1-4** — Pin scikit-learn identically train↔serve; document model provenance | `requirements.txt`, `pyproject.toml`, `ingestion_detection/train.py` |
+| Y5 | **P2** — Add `render.yaml` blueprint (2 services, start commands, `/health`, env) | new `render.yaml` |
+| Y6 | **P2** — Remove dead code/drift: `queue_store.py`, `snapshot_vm` enum (+`003` CHECK), unused `threat_intel_docs` (`002`) | `ingestion_detection/queue_store.py`, `shared/enums.py`, `supabase_migrations/migrations/002,003` |
+| Y7 | **P2** — Document data bootstrap (where to place `data/*.csv`, build baselines) | `README.md` (backend section) |
+| Y8 | **P2** — Track deprecated gunicorn worker class (no change until uvicorn ≥ 0.36) | `deploy/gunicorn_conf.py` (note only) |
+
+### Integration contract (agree once, then work independently)
+Only **two string values** couple X and Y — settle these at the start:
+1. **B's public URL** (Render) → X sets it as `NEXT_PUBLIC_API_BASE_URL` (X8); Y confirms B serves there (Y2/Y5).
+2. **The Vercel frontend origin** → Y sets it in `CORS_ALLOWED_ORIGINS` on both backends (Y2); X deploys the frontend at that origin (X8).
+
+No file is edited by both owners, so X and Y can branch, commit, and PR in parallel without conflicts. Suggested branches: `feat/frontend-real-data` (X) and `feat/backend-deploy-infra` (Y).
