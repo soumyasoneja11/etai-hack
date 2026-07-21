@@ -1,0 +1,24 @@
+# Keep the backend build context small and reproducible.
+.git
+.github
+.venv
+**/__pycache__/
+*.pyc
+etai_hack.egg-info/
+
+# Frontend has its own image/build context.
+frontend
+
+# Data, reports, notebooks, docs — not needed in the backend runtime image.
+data
+reports
+notebooks
+docs
+*.md
+
+# Local env / secrets must never enter an image.
+.env
+.env.*
+
+# Tests run in CI, not inside the runtime image.
+tests

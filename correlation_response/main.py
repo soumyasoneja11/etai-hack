@@ -19,6 +19,8 @@ from shared.auth import ScopedContext, require_scoped
 from shared.cors import get_cors_allowed_origins
 from shared.envelope import error_response, success_response
 from shared.errors import StoreUnavailableError
+from shared.logging_config import configure_logging
+from shared.request_context import install_request_context
 from shared.schemas import (
     BlockRequest,
     DetectionResult,
@@ -28,7 +30,7 @@ from shared.schemas import (
     RevokeRequest,
 )
 
-logging.basicConfig(level=logging.INFO)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +58,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Reuse the inbound X-Request-ID (set by A on the forward call) or mint one, so
+# a single request is traceable across both services.
+install_request_context(app)
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +154,21 @@ def correlate(
     anomaly_id = str(uuid4())
     attribution["anomaly_id"] = anomaly_id
 
-    # 2. Persist anomaly + attribution to Supabase
+    # 2. Compute the decision NOW so the authoritative correlate-time
+    #    recommendation is persisted with the anomaly (previously it was only
+    #    recomputed by /decide and never stored, so it was lost on reload).
+    from correlation_response.decision import compute_decision
+
+    decision_result = compute_decision(
+        anomaly_id=anomaly_id,
+        attack=detection.attack,
+        confidence=detection.confidence,
+        mitre_technique_id=attribution["mitre_technique_id"],
+        mitre_tactic=attribution["mitre_tactic"],
+    )
+    attribution["decision"] = decision_result.model_dump(mode="json")
+
+    # 3. Persist anomaly (with decision) + attribution to Supabase
     list_item = detection.to_anomaly_list_item(anomaly_id=anomaly_id)
     detail = detection.to_anomaly_detail(anomaly_id=anomaly_id)
 
@@ -158,6 +178,7 @@ def correlate(
         list_item=list_item,
         detail=detail,
         attribution=attribution,
+        decision=attribution["decision"],
         user_id=user_id,
         client=ctx.db,
     )
@@ -193,18 +214,6 @@ def correlate(
         for d in threat_bundle["cert_in_advisories"]
     ]
     attribution["threat_intel"] = threat_bundle
-
-    # 5. Decision engine (auto-compute recommendation)
-    from correlation_response.decision import compute_decision
-
-    decision_result = compute_decision(
-        anomaly_id=anomaly_id,
-        attack=detection.attack,
-        confidence=detection.confidence,
-        mitre_technique_id=attribution["mitre_technique_id"],
-        mitre_tactic=attribution["mitre_tactic"],
-    )
-    attribution["decision"] = decision_result.model_dump(mode="json")
 
     logger.info(
         "correlated signal=%s attack=%s → %s (%s) anomaly=%s threat_intel=%d decision=%s",
@@ -769,13 +778,27 @@ def get_audit_trail_endpoint(
 # ---------------------------------------------------------------------------
 
 def run() -> None:
+    """Local/dev entrypoint.
+
+    Honours ``PORT``/``HOST`` (falling back to ``CORR_PORT``/``CORR_HOST``
+    config defaults) and ``WEB_CONCURRENCY`` for worker count. Production runs
+    under Gunicorn + uvicorn workers (deploy/gunicorn_conf.py).
+    """
+    import os
+
     import uvicorn
+
+    host = os.getenv("HOST", settings.host)
+    port = int(os.getenv("PORT", str(settings.port)))
+    workers = int(os.getenv("WEB_CONCURRENCY", "1"))
 
     uvicorn.run(
         "correlation_response.main:app",
-        host=settings.host,
-        port=settings.port,
+        host=host,
+        port=port,
+        workers=workers,
         reload=False,
+        log_config=None,  # keep our JSON logging (configure_logging) intact
     )
 
 

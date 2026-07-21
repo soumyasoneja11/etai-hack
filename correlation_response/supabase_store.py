@@ -57,6 +57,7 @@ class SupabaseAnomalyStore:
         detail: Any,
         attribution: dict[str, Any],
         *,
+        decision: dict[str, Any] | None = None,
         user_id: str | None = None,
         client: Any = None,
     ) -> None:
@@ -67,6 +68,8 @@ class SupabaseAnomalyStore:
             list_item: AnomalyListItem Pydantic model
             detail: AnomalyDetail Pydantic model
             attribution: MITRE attribution dict
+            decision: correlate-time DecisionResult dict, persisted on the
+                anomaly so it survives reloads (see migration 006)
             user_id: owner UUID (required for RLS insert policy)
             client: user-scoped Supabase client (forwards caller JWT)
         """
@@ -87,6 +90,8 @@ class SupabaseAnomalyStore:
             "reason": detail_dict.get("reason"),
             "raw_signal_ref": detail_dict.get("raw_signal_ref"),
         }
+        if decision is not None:
+            anomaly_row["decision"] = decision
         if user_id:
             anomaly_row["user_id"] = user_id
 

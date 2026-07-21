@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from ingestion_detection.config import settings
+from shared.logging_config import REQUEST_ID_HEADER, get_request_id
 from shared.schemas import DetectionResult
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,10 @@ def forward_detection_to_correlate(
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
+    # Propagate the correlation id so B logs the handoff under the same request.
+    rid = get_request_id()
+    if rid:
+        headers[REQUEST_ID_HEADER] = rid
 
     try:
         with httpx.Client(timeout=settings.correlation_forward_timeout_sec) as client:

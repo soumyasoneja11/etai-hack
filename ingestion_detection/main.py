@@ -34,7 +34,9 @@ from shared.auth import ScopedContext, require_admin, require_auth, require_scop
 from shared.cors import get_cors_allowed_origins
 from shared.envelope import error_response, success_response
 from shared.errors import StoreUnavailableError
+from shared.logging_config import configure_logging
 from shared.rate_limit import SlidingWindowRateLimiter
+from shared.request_context import install_request_context
 from shared.schemas import (
     BaselineManifest,
     DetectionResult,
@@ -47,7 +49,7 @@ from shared.schemas import (
 )
 from shared.supabase_client import get_supabase_admin
 
-logging.basicConfig(level=logging.INFO)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -97,6 +99,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Assign/propagate an X-Request-ID correlation id for every request.
+install_request_context(app)
 
 
 @app.exception_handler(RequestValidationError)
@@ -515,13 +520,28 @@ def get_entity_baseline(entity_id: str, _user: dict = Depends(require_auth)):
 # ---------------------------------------------------------------------------
 
 def run() -> None:
+    """Local/dev entrypoint.
+
+    Honours ``HOST``/``PORT`` (falling back to config defaults) and
+    ``WEB_CONCURRENCY`` for worker count. In containers/production we run under
+    Gunicorn with the uvicorn worker class (see deploy/gunicorn_conf.py); this
+    entrypoint stays convenient for ``python -m`` / ``ingest-api`` local runs.
+    """
+    import os
+
     import uvicorn
+
+    host = os.getenv("HOST", settings.host)
+    port = int(os.getenv("PORT", str(settings.port)))
+    workers = int(os.getenv("WEB_CONCURRENCY", "1"))
 
     uvicorn.run(
         "ingestion_detection.main:app",
-        host=settings.host,
-        port=settings.port,
+        host=host,
+        port=port,
+        workers=workers,
         reload=False,
+        log_config=None,  # keep our JSON logging (configure_logging) intact
     )
 
 

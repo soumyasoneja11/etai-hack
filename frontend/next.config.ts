@@ -16,7 +16,9 @@ if (process.env.NODE_ENV === "production") {
 }
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Emit a self-contained server bundle (.next/standalone) so the Docker
+  // runner stage can run `node server.js` without the full node_modules tree.
+  output: "standalone",
 };
 
 export default nextConfig;

@@ -1,0 +1,85 @@
+# Local/staging stack: ingestion (A) + correlation (B) + frontend.
+# Copy .env.example -> .env and fill in the Supabase values, then:
+#   docker compose up --build
+#
+# Browser -> frontend :3000 -> B :8001 (real mode). A :8000 does the ingest +
+# forwards detections to B. Both backends share one image (see Dockerfile).
+
+services:
+  ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: etai-hack-backend:local
+    command: ["gunicorn", "ingestion_detection.main:app", "-c", "deploy/gunicorn_conf.py"]
+    env_file: [.env]
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-2}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000}"
+      # A -> B handoff target on the internal compose network.
+      CORRELATION_BASE_URL: "http://correlation:8001"
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the (git-ignored) model artifact so the detector is healthy.
+      - ./ingestion_detection/models:/app/ingestion_detection/models:ro
+    depends_on:
+      correlation:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  correlation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: etai-hack-backend:local
+    command: ["gunicorn", "correlation_response.main:app", "-c", "deploy/gunicorn_conf.py"]
+    env_file: [.env]
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8001"
+      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-2}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000}"
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* are inlined at build time (browser-visible).
+        NEXT_PUBLIC_USE_MOCK_API: "false"
+        NEXT_PUBLIC_API_BASE_URL: "${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8001}"
+        NEXT_PUBLIC_SUPABASE_URL: "${NEXT_PUBLIC_SUPABASE_URL:-}"
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: "${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}"
+    environment:
+      NODE_ENV: production
+      # Server-side (used by the /api/auth/* route handlers at runtime).
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY:-}"
+    ports:
+      - "3000:3000"
+    depends_on:
+      ingestion:
+        condition: service_started
+      correlation:
+        condition: service_started
+    restart: unless-stopped
