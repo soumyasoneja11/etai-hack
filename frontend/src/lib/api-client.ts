@@ -34,42 +34,127 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8001";
 
 // ---------------------------------------------------------------------------
-// Bearer token management
+// Bearer token management  (P1-8)
 // ---------------------------------------------------------------------------
-
-const TOKEN_KEY = "cybershield_jwt";
+//
+// STORAGE STRATEGY — in-memory access token + httpOnly refresh cookie.
+//
+// Previously the JWT lived in sessionStorage, which is readable by any injected
+// script: a single XSS bug leaks the token. We instead keep the short-lived
+// access token in a module-scoped variable (never in Web Storage, so it is not
+// exfiltratable by a persisted `sessionStorage.getItem` payload and is wiped on
+// tab close), and keep the long-lived *refresh* token in an httpOnly, SameSite
+// cookie that JavaScript cannot read at all (see /api/auth/* route handlers).
+//
+// Trade-off vs. the alternative "access token also in an httpOnly cookie":
+// backend B authenticates via the `Authorization: Bearer` header (not cookies)
+// and lives on a different origin, so a pure-cookie access token would require
+// cross-site cookies (SameSite=None) plus CSRF defenses. Keeping the access
+// token in memory and attaching it as a Bearer header keeps the cross-origin
+// contract simple while still removing both tokens from XSS-readable storage.
+// The cost is that a full page reload loses the in-memory token — handled by
+// `ensureFreshToken()` silently re-minting it from the refresh cookie on load.
 
 let _token: string | null = null;
+/** Access-token expiry (epoch ms); 0 when unknown. */
+let _expiresAtMs = 0;
+/** De-dupes concurrent refreshes into a single in-flight request. */
+let _refreshInFlight: Promise<string | null> | null = null;
+/** Whether we've attempted the one-shot refresh-on-load yet. */
+let _triedInitialRefresh = false;
 
-/** Returns the current JWT, falling back to sessionStorage. */
-export function getToken(): string | null {
-  if (_token) return _token;
-  if (typeof window !== "undefined") {
-    _token = sessionStorage.getItem(TOKEN_KEY);
+/** Decodes the `exp` claim (ms) from a JWT without verifying it. */
+function decodeExpMs(jwt: string): number {
+  try {
+    const payload = jwt.split(".")[1];
+    const json = JSON.parse(
+      atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
+    );
+    return typeof json.exp === "number" ? json.exp * 1000 : 0;
+  } catch {
+    return 0;
   }
+}
+
+/** Returns the current in-memory JWT (synchronous; may be stale/expired). */
+export function getToken(): string | null {
   return _token;
 }
 
-/** Stores a JWT in memory and sessionStorage. */
-export function setToken(jwt: string): void {
+/** Stores a JWT in memory and records its expiry. */
+export function setToken(jwt: string, expiresAt?: number | null): void {
   _token = jwt;
+  _expiresAtMs = expiresAt ? expiresAt * 1000 : decodeExpMs(jwt);
+}
+
+/** Clears the in-memory JWT and best-effort clears the refresh cookie. */
+export function clearToken(): void {
+  _token = null;
+  _expiresAtMs = 0;
   if (typeof window !== "undefined") {
-    sessionStorage.setItem(TOKEN_KEY, jwt);
+    // Fire-and-forget: drop the httpOnly refresh cookie server-side.
+    void fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
   }
 }
 
-/** Clears the stored JWT. */
-export function clearToken(): void {
-  _token = null;
-  if (typeof window !== "undefined") {
-    sessionStorage.removeItem(TOKEN_KEY);
+/**
+ * Silently mints a new access token from the httpOnly refresh cookie.
+ * Concurrent callers share a single in-flight request. Returns the new token,
+ * or null if there is no valid session.
+ */
+export async function refreshAccessToken(): Promise<string | null> {
+  if (_refreshInFlight) return _refreshInFlight;
+
+  _refreshInFlight = (async () => {
+    try {
+      const res = await fetch("/api/auth/refresh", { method: "POST" });
+      if (!res.ok) {
+        _token = null;
+        _expiresAtMs = 0;
+        return null;
+      }
+      const data = await res.json();
+      if (!data.access_token) {
+        _token = null;
+        _expiresAtMs = 0;
+        return null;
+      }
+      setToken(data.access_token, data.expires_at);
+      return _token;
+    } catch {
+      return null;
+    } finally {
+      _refreshInFlight = null;
+    }
+  })();
+
+  return _refreshInFlight;
+}
+
+/**
+ * Ensures a usable access token exists before a request:
+ *  - refresh-on-load: if we have no token yet (e.g. after a page reload) try
+ *    once to recover a session from the refresh cookie;
+ *  - proactive refresh: if the current token is within 60s of expiry, renew it.
+ */
+async function ensureFreshToken(): Promise<void> {
+  if (IS_MOCK_MODE) return;
+
+  const now = Date.now();
+  if (_token && (_expiresAtMs === 0 || now < _expiresAtMs - 60_000)) {
+    return; // still comfortably valid
   }
+
+  if (!_token && _triedInitialRefresh) {
+    return; // no session and already tried — don't spam the endpoint
+  }
+  _triedInitialRefresh = true;
+  await refreshAccessToken();
 }
 
 /** Builds the Authorization header if a token is available. */
 function authHeaders(): Record<string, string> {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return _token ? { Authorization: `Bearer ${_token}` } : {};
 }
 
 // ---------------------------------------------------------------------------
@@ -168,12 +253,11 @@ export async function apiGet<T>(
   path: string,
   options: ApiGetOptions = {},
 ): Promise<T> {
+  await ensureFreshToken();
   const url = resolveUrl(path, options.queryParams);
 
-  let response: Response;
-
-  try {
-    response = await fetch(url, {
+  const send = (): Promise<Response> =>
+    fetch(url, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -182,6 +266,16 @@ export async function apiGet<T>(
       },
       signal: options.signal,
     });
+
+  let response: Response;
+
+  try {
+    response = await send();
+    // On 401, try a single silent refresh + retry before giving up.
+    if (response.status === 401 && !IS_MOCK_MODE) {
+      const renewed = await refreshAccessToken();
+      if (renewed) response = await send();
+    }
   } catch (err) {
     // Network failure (DNS, CORS, offline, aborted, etc.)
     if (err instanceof DOMException && err.name === "AbortError") {
@@ -238,12 +332,11 @@ export async function apiPost<T>(
   body: unknown,
   options: Omit<ApiGetOptions, "queryParams"> = {},
 ): Promise<T> {
+  await ensureFreshToken();
   const url = resolveUrl(path);
 
-  let response: Response;
-
-  try {
-    response = await fetch(url, {
+  const send = (): Promise<Response> =>
+    fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -254,6 +347,15 @@ export async function apiPost<T>(
       body: JSON.stringify(body),
       signal: options.signal,
     });
+
+  let response: Response;
+
+  try {
+    response = await send();
+    if (response.status === 401 && !IS_MOCK_MODE) {
+      const renewed = await refreshAccessToken();
+      if (renewed) response = await send();
+    }
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
       throw err;
@@ -297,46 +399,46 @@ export async function apiPost<T>(
 }
 
 // ---------------------------------------------------------------------------
-// Auth helpers — Supabase GoTrue login
+// Auth helpers — same-origin login/logout (P1-8)
 // ---------------------------------------------------------------------------
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-
 /**
- * Sign in with Supabase email/password, store the JWT, and return it.
- * This calls the GoTrue `/auth/v1/token?grant_type=password` endpoint directly.
+ * Sign in via the same-origin /api/auth/login route. The server proxies
+ * Supabase GoTrue, stores the refresh token in an httpOnly cookie, and returns
+ * the access token, which we keep in memory only.
  */
 export async function apiLogin(email: string, password: string): Promise<string> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  const response = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) {
     throw new ApiError(
-      "Supabase credentials not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
-      0,
+      data.error ?? `Login failed (HTTP ${response.status})`,
+      response.status,
       null,
     );
   }
 
-  const url = `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({ email, password }),
-  });
+  setToken(data.access_token, data.expires_at);
+  _triedInitialRefresh = true;
+  return data.access_token as string;
+}
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new ApiError(`Supabase login failed: ${text}`, response.status, null);
+/**
+ * Restores a session on app load from the httpOnly refresh cookie, if present.
+ * Returns true when an access token is now available. Call this once at the top
+ * of authenticated views so a page reload doesn't bounce the user to /login.
+ */
+export async function ensureAuth(): Promise<boolean> {
+  if (IS_MOCK_MODE) return true;
+  if (_token) return true;
+  if (!_triedInitialRefresh) {
+    _triedInitialRefresh = true;
+    await refreshAccessToken();
   }
-
-  const data = await response.json();
-  const jwt = data.access_token;
-  if (!jwt) {
-    throw new ApiError("No access_token in Supabase response", 500, null);
-  }
-
-  setToken(jwt);
-  return jwt;
+  return _token !== null;
 }

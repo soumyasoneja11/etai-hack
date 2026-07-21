@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { TopNavbar } from "@/components/dashboard/TopNavbar";
+import { ensureAuth } from "@/lib/api-client";
 
 export default function DashboardLayout({
   children,
@@ -10,6 +11,12 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Restore the in-memory access token from the httpOnly refresh cookie on
+  // load, so a page reload doesn't drop an otherwise-valid session (P1-8).
+  useEffect(() => {
+    void ensureAuth();
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background relative">
