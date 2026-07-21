@@ -183,10 +183,10 @@ def correlate(
         client=ctx.db,
     )
 
-    # 3. Neo4j graph update (best-effort, non-blocking)
+    # 4. Neo4j graph update (best-effort, non-blocking)
     _try_neo4j_update(detection, attribution, anomaly_id)
 
-    # 4. Enrich with threat intel
+    # 5. Enrich with threat intel
     threat_bundle = get_threat_intel_bundle(detection.attack)
     attribution["related_cves"] = [
         {
@@ -374,13 +374,9 @@ def generate_narrative_endpoint(
     if stored is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
-    # Get attribution
-    attrs = anomaly_store.list_attributions(
-        limit=1000, offset=0, user_id=ctx.user_id, client=ctx.db
-    )
-    attribution = next(
-        (a for a in attrs if a.get("anomaly_id") == req.anomaly_id),
-        None,
+    # Get attribution (direct query, not scan)
+    attribution = anomaly_store.get_attribution(
+        req.anomaly_id, user_id=ctx.user_id, client=ctx.db
     )
 
     attack = stored.get("title", "Unknown")
@@ -480,12 +476,8 @@ def decide_endpoint(
     if stored is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
-    attrs = anomaly_store.list_attributions(
-        limit=1000, offset=0, user_id=ctx.user_id, client=ctx.db
-    )
-    attribution = next(
-        (a for a in attrs if a.get("anomaly_id") == req.anomaly_id),
-        None,
+    attribution = anomaly_store.get_attribution(
+        req.anomaly_id, user_id=ctx.user_id, client=ctx.db
     )
 
     attack = stored.get("title", "Unknown")

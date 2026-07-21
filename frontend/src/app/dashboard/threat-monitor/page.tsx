@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, Filter, RefreshCw, AlertOctagon, ShieldAlert, ArrowUpDown, ChevronLeft, ChevronRight, Play } from "lucide-react";
+import { Search, Filter, RefreshCw, AlertOctagon, ShieldAlert, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import type { AnomalyListItem, AnomalyListResponse } from "@/types/api";
 import { apiGet } from "@/lib/api-client";
 import { motion } from "framer-motion";
@@ -43,7 +43,9 @@ export default function ThreatMonitorPage() {
   };
 
   useEffect(() => {
-    fetchAlerts();
+    queueMicrotask(() => {
+      fetchAlerts();
+    });
   }, []);
 
   const handleSort = (field: "detected_at" | "score") => {
@@ -85,7 +87,7 @@ export default function ThreatMonitorPage() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedAlerts = filteredAlerts.slice(startIndex, startIndex + itemsPerPage);
 
-  const handleFilterChange = (setter: Function, value: string) => {
+  const handleFilterChange = (setter: (val: string) => void, value: string) => {
     setter(value);
     setCurrentPage(1);
   };

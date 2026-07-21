@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Play, Activity } from "lucide-react";
+import { ArrowRight, Activity } from "lucide-react";
 import { CRITICAL_SECTORS } from "@/lib/constants";
 
 /** Hands-on, humanized multi-state SCADA Grid / Substation Simulation Widget */

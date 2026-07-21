@@ -2,6 +2,25 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
+interface DocMapping {
+  cicids_label?: string;
+  mitre_technique_id?: string;
+  mitre_tactic?: string;
+}
+
+interface CorpusDoc {
+  doc_id: string;
+  type: string;
+  title: string;
+  description: string;
+  severity: string;
+  cvss_score?: number | null;
+  published_date?: string;
+  affected_software?: string[];
+  attack_mapping?: DocMapping;
+  remediation?: string;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -41,7 +60,7 @@ export async function GET(request: Request) {
     }
 
     // Normalizing and filtering corpus for matching label
-    const matchedDocs = corpus.filter((doc: any) => {
+    const matchedDocs = corpus.filter((doc: CorpusDoc) => {
       const mapping = doc.attack_mapping;
       if (!mapping) return false;
       
@@ -98,8 +117,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       data: {
-        related_cves: matchedDocs.filter((d: any) => d.type === "CVE"),
-        cert_in_advisories: matchedDocs.filter((d: any) => d.type === "CERT-In"),
+        related_cves: matchedDocs.filter((d: CorpusDoc) => d.type === "CVE"),
+        cert_in_advisories: matchedDocs.filter((d: CorpusDoc) => d.type === "CERT-In"),
         total: matchedDocs.length,
         mitre_info: mitreInfo
       },
@@ -108,13 +127,14 @@ export async function GET(request: Request) {
         timestamp: new Date().toISOString(),
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as Error;
     return NextResponse.json({
       success: false,
       data: null,
       error: {
         code: "INTERNAL_ERROR",
-        message: error.message || "Failed to retrieve threat intelligence",
+        message: err.message || "Failed to retrieve threat intelligence",
       },
       meta: {
         timestamp: new Date().toISOString(),

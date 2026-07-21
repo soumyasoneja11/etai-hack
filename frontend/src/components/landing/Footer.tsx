@@ -22,13 +22,13 @@ export function Footer() {
               Built for ET AI Hackathon 2026.
             </p>
             <div className="flex items-center gap-3">
-              <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors">
+              <a href="https://github.com/shubhanshuglitch" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors">
                 <Code className="h-4 w-4" />
               </a>
-              <a href="https://x.com" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors">
+              <a href="https://x.com/Shubhan50717792" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors">
                 <ExternalLink className="h-4 w-4" />
               </a>
-              <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors">
+              <a href="https://www.linkedin.com/in/shubhanshu-verma-424230320" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors">
                 <Briefcase className="h-4 w-4" />
               </a>
             </div>
@@ -68,7 +68,7 @@ export function Footer() {
             <ul className="space-y-2.5">
               {["ET AI Hackathon 2026", "Problem Statement", "Team", "GitHub Repository", "License — MIT"].map((item) => (
                 <li key={item}>
-                  <Link href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  <Link href="https://unstop.com/competitions/crp-et-ai-hackathon-20-economic-times-1675680" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                     {item}
                   </Link>
                 </li>

@@ -25,7 +25,7 @@ ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY audit_logs_admin_all ON audit_logs
     FOR ALL
     USING (
-        (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+        (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
     );
 
 CREATE POLICY audit_logs_user_insert ON audit_logs
@@ -64,7 +64,7 @@ ALTER TABLE soar_actions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY soar_actions_admin_all ON soar_actions
     FOR ALL
     USING (
-        (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+        (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
     );
 
 CREATE POLICY soar_actions_user_insert ON soar_actions

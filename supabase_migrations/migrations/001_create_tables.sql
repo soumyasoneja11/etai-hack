@@ -28,7 +28,7 @@ ALTER TABLE signals ENABLE ROW LEVEL SECURITY;
 CREATE POLICY signals_admin_all ON signals
     FOR ALL
     USING (
-        (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+        (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
     );
 
 -- Regular user: can INSERT their own rows
@@ -69,7 +69,7 @@ ALTER TABLE anomalies ENABLE ROW LEVEL SECURITY;
 CREATE POLICY anomalies_admin_all ON anomalies
     FOR ALL
     USING (
-        (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+        (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
     );
 
 CREATE POLICY anomalies_user_insert ON anomalies
@@ -102,7 +102,7 @@ ALTER TABLE attributions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY attributions_admin_all ON attributions
     FOR ALL
     USING (
-        (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+        (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
     );
 
 CREATE POLICY attributions_user_insert ON attributions

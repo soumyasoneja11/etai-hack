@@ -50,8 +50,8 @@ function WorldThreatMapInner({ origins }: WorldThreatMapProps) {
         style={{ width: "100%", height: "auto" }}
       >
         <Geographies geography={GEO_URL}>
-          {({ geographies }: { geographies: any[] }) =>
-            geographies.map((geo: any) => (
+          {({ geographies }: { geographies: { rsmKey: string }[] }) =>
+            geographies.map((geo) => (
               <Geography
                 key={geo.rsmKey}
                 geography={geo}
