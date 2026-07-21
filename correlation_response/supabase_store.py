@@ -257,6 +257,30 @@ class SupabaseAnomalyStore:
             logger.error("Failed to list attributions: %s", exc)
             raise StoreUnavailableError("failed to list attributions") from exc
 
+    def get_attribution(
+        self,
+        anomaly_id: str,
+        *,
+        user_id: str | None = None,
+        client: Any = None,
+    ) -> dict[str, Any] | None:
+        """Fetch the MITRE attribution for a single anomaly (direct query)."""
+        db = _resolve_client(client)
+        try:
+            query = (
+                db.table(self._attributions_table)
+                .select("*")
+                .eq("anomaly_id", anomaly_id)
+            )
+            if user_id:
+                query = query.eq("user_id", user_id)
+            result = query.limit(1).execute()
+            rows = result.data or []
+            return rows[0] if rows else None
+        except Exception as exc:
+            logger.error("Failed to get attribution for %s: %s", anomaly_id, exc)
+            raise StoreUnavailableError(f"failed to read attribution for {anomaly_id}") from exc
+
     def count(
         self,
         *,

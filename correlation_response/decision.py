@@ -13,16 +13,13 @@ Uses a simple, explainable matrix that judges can understand:
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 from typing import Any
 
+from correlation_response.correlate import _load_label_map
 from shared.schemas import DecisionResult
 
 logger = logging.getLogger(__name__)
-
-_DATA_DIR = Path(__file__).resolve().parent / "data"
 
 # Pre-built mapping from orchestration.blast_radius string → numeric estimate
 _BLAST_RADIUS_ESTIMATES: dict[str, int] = {
@@ -44,13 +41,6 @@ _ACTION_MAP: dict[str, str] = {
     "Heartbleed": "isolate_endpoint",
     "Bot": "isolate_endpoint",
 }
-
-
-def _load_label_map() -> dict[str, Any]:
-    """Load label_to_mitre.json for orchestration metadata."""
-    path = _DATA_DIR / "label_to_mitre.json"
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
 
 
 def get_blast_radius_from_graph(technique_id: str) -> int | None:

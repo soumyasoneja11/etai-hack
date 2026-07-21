@@ -1,14 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
 import {
   Search,
   Bell,
   PanelLeftClose,
   Clock,
-  ChevronRight,
-  CheckCircle2,
   AlertTriangle,
   User,
   Settings,
@@ -26,19 +23,13 @@ interface TopNavbarProps {
   onToggleSidebar: () => void;
 }
 
-export function TopNavbar({ sidebarCollapsed, onToggleSidebar }: TopNavbarProps) {
-  const pathname = usePathname();
+export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
   const router = useRouter();
   const [currentTime, setCurrentTime] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState("light");
   const unreadCount = NOTIFICATIONS.filter((n) => !n.read).length;
-
-  useEffect(() => {
-    const isDark = document.documentElement.classList.contains("dark");
-    setTheme(isDark ? "dark" : "light");
-  }, []);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -81,13 +72,11 @@ export function TopNavbar({ sidebarCollapsed, onToggleSidebar }: TopNavbarProps)
     return () => clearInterval(interval);
   }, []);
 
-  // Build breadcrumb from pathname
-  const segments = pathname.split("/").filter(Boolean);
-  const breadcrumbs = segments.map((seg, i) => ({
-    label: seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, " "),
-    href: "/" + segments.slice(0, i + 1).join("/"),
-    isLast: i === segments.length - 1,
-  }));
+  useEffect(() => {
+    setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
+  }, []);
+
+
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-sidebar px-4 lg:px-6">

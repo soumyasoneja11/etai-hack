@@ -15,22 +15,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from shared.enums import ActionType, AnomalyStatus, Severity
 
-
-# ---------------------------------------------------------------------------
-# Standard envelope (all REST responses)
-# ---------------------------------------------------------------------------
-
-
-class ApiMeta(BaseModel):
-    timestamp: datetime
-    request_id: str
-
-
-class ApiErrorBody(BaseModel):
-    code: str
-    message: str
-
-
 # ---------------------------------------------------------------------------
 # A — signal ingest (internal; feeds detection before B creates /anomalies)
 # ---------------------------------------------------------------------------

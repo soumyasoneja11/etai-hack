@@ -4,6 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import { GraphNode, GraphLink } from "@/app/api/graph/route";
 
+interface ForceGraphNode extends GraphNode {
+  x?: number;
+  y?: number;
+}
+
+interface ForceGraphLink {
+  source: string | ForceGraphNode;
+  target: string | ForceGraphNode;
+  animated?: boolean;
+}
+
 interface GraphViewerProps {
   data: {
     nodes: GraphNode[];
@@ -22,28 +33,43 @@ export default function GraphViewer({ data, onSelectNode, selectedNode }: GraphV
 
     const updateSize = () => {
       if (containerRef.current) {
-        setDimensions({
-          width: containerRef.current.clientWidth,
-          height: Math.max(containerRef.current.clientHeight, 480)
-        });
+        const rect = containerRef.current.getBoundingClientRect();
+        const w = rect.width || containerRef.current.clientWidth || 800;
+        const h = Math.max(rect.height || containerRef.current.clientHeight || 500, 480);
+        setDimensions({ width: w, height: h });
       }
     };
 
     updateSize();
-    window.addEventListener("resize", updateSize);
+
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(updateSize);
+      observer.observe(containerRef.current);
+    } else {
+      window.addEventListener("resize", updateSize);
+    }
     
-    const timer = setTimeout(updateSize, 100);
+    const timer = setTimeout(updateSize, 150);
 
     return () => {
-      window.removeEventListener("resize", updateSize);
+      if (observer) {
+        observer.disconnect();
+      } else {
+        window.removeEventListener("resize", updateSize);
+      }
       clearTimeout(timer);
     };
   }, []);
 
-  const paintNode = (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
-    const isSelected = selectedNode && selectedNode.id === node.id;
-    const label = node.label.split(" (")[0]; 
-    const fontSize = Math.max(8.5, 11.5 / globalScale);
+  const paintNode = (node: ForceGraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
+    if (!node) return;
+    const { x = 0, y = 0 } = node;
+    const isSelected = Boolean(selectedNode && selectedNode.id === node.id);
+    const rawLabel = typeof node.label === "string" ? node.label : (node.id || "Node");
+    const label = rawLabel.split(" (")[0] || rawLabel; 
+    const scale = globalScale || 1;
+    const fontSize = Math.max(8.5, 11.5 / scale);
     
     ctx.font = `${fontSize}px Geist, sans-serif`;
 
@@ -63,9 +89,9 @@ export default function GraphViewer({ data, onSelectNode, selectedNode }: GraphV
     // Outer Glow Selection
     if (isSelected) {
       ctx.beginPath();
-      ctx.arc(node.x, node.y, r + 4, 0, 2 * Math.PI);
+      ctx.arc(x, y, r + 4, 0, 2 * Math.PI);
       ctx.strokeStyle = "rgba(34, 197, 94, 0.8)";
-      ctx.lineWidth = 1.8 / globalScale;
+      ctx.lineWidth = 1.8 / scale;
       ctx.stroke();
       
       ctx.shadowColor = "rgba(34, 197, 94, 0.8)";
@@ -77,14 +103,14 @@ export default function GraphViewer({ data, onSelectNode, selectedNode }: GraphV
 
     // Main Circle
     ctx.beginPath();
-    ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
     ctx.fillStyle = color;
     ctx.fill();
     ctx.shadowBlur = 0; 
 
     // Inner center styling
     ctx.beginPath();
-    ctx.arc(node.x, node.y, r * 0.35, 0, 2 * Math.PI);
+    ctx.arc(x, y, r * 0.35, 0, 2 * Math.PI);
     ctx.fillStyle = "#17181C";
     ctx.fill();
 
@@ -97,11 +123,11 @@ export default function GraphViewer({ data, onSelectNode, selectedNode }: GraphV
     
     ctx.fillStyle = "rgba(23, 24, 28, 0.9)";
     ctx.strokeStyle = isSelected ? "rgba(34, 197, 94, 0.4)" : "rgba(255, 255, 255, 0.05)";
-    ctx.lineWidth = 1 / globalScale;
+    ctx.lineWidth = 1 / scale;
     
-    const labelY = node.y + r + 4;
+    const labelY = y + r + 4;
     
-    const rx = node.x - bgW / 2;
+    const rx = x - bgW / 2;
     const ry = labelY;
     const radius = 3;
     ctx.beginPath();
@@ -122,8 +148,21 @@ export default function GraphViewer({ data, onSelectNode, selectedNode }: GraphV
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = isSelected ? "#22C55E" : "rgba(245, 245, 245, 0.95)";
-    ctx.fillText(label, node.x, labelY + bgH / 2);
+    ctx.fillText(label, x, labelY + bgH / 2);
   };
+
+  const safeData = data && Array.isArray(data.nodes) ? data : { nodes: [], links: [] };
+
+  if (safeData.nodes.length === 0) {
+    return (
+      <div 
+        ref={containerRef} 
+        className="relative flex-1 min-h-[480px] bg-[#0c0d10] border border-border rounded-[16px] flex items-center justify-center text-muted-foreground"
+      >
+        <span className="text-xs font-medium">No attack path topology data available</span>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -131,32 +170,37 @@ export default function GraphViewer({ data, onSelectNode, selectedNode }: GraphV
       className="relative flex-1 min-h-[480px] bg-[#0c0d10] border border-border rounded-[16px] overflow-hidden"
     >
       <ForceGraph2D
-        graphData={data}
+        graphData={safeData}
         width={dimensions.width}
         height={dimensions.height}
         nodeCanvasObject={paintNode}
-        nodePointerAreaPaint={(node: any, color, ctx) => {
+        nodePointerAreaPaint={(node: ForceGraphNode, color, ctx) => {
+          if (!node) return;
+          const { x = 0, y = 0 } = node;
           ctx.fillStyle = color;
           ctx.beginPath();
-          ctx.arc(node.x, node.y, 12, 0, 2 * Math.PI);
+          ctx.arc(x, y, 12, 0, 2 * Math.PI);
           ctx.fill();
         }}
-        linkWidth={(link: any) => (link.animated ? 1.5 : 1)}
-        linkColor={(link: any) => 
-          selectedNode && (link.source.id === selectedNode.id || link.target.id === selectedNode.id)
+        linkWidth={(link: ForceGraphLink) => (link?.animated ? 1.5 : 1)}
+        linkColor={(link: ForceGraphLink) => {
+          if (!link) return "rgba(255, 255, 255, 0.05)";
+          const sourceId = typeof link.source === "string" ? link.source : link.source?.id;
+          const targetId = typeof link.target === "string" ? link.target : link.target?.id;
+          return selectedNode && (sourceId === selectedNode.id || targetId === selectedNode.id)
             ? "rgba(34, 197, 94, 0.5)"
             : link.animated 
               ? "rgba(239, 68, 68, 0.3)" 
-              : "rgba(255, 255, 255, 0.05)"
-        }
+              : "rgba(255, 255, 255, 0.05)";
+        }}
         linkDirectionalArrowLength={4}
         linkDirectionalArrowRelPos={1}
-        linkDirectionalParticles={(link: any) => (link.animated ? 3 : 0)}
+        linkDirectionalParticles={(link: ForceGraphLink) => (link?.animated ? 3 : 0)}
         linkDirectionalParticleSpeed={0.005}
         linkDirectionalParticleWidth={2.5}
         linkDirectionalParticleColor={() => "#EF4444"}
-        onNodeClick={(node: any) => {
-          onSelectNode(node);
+        onNodeClick={(node: ForceGraphNode) => {
+          if (node) onSelectNode(node);
         }}
         onBackgroundClick={() => {
           onSelectNode(null);

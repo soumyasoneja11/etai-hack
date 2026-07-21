@@ -5,6 +5,57 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.4.1] — 2026-07-21
+
+### Summary
+
+Fixed the main Dashboard Attack Path Graph rendering path, added a shared fallback topology dataset for empty or unavailable graph responses, resolved a client/server hydration mismatch in the dashboard and landing theme toggles, and documented backend network mode configurations and default authentication flows.
+
+---
+
+### Fixed
+
+#### Dashboard — Attack Path Graph Rendering Bug (P1 UI Fix)
+- [`frontend/src/app/dashboard/page.tsx`](../frontend/src/app/dashboard/page.tsx):
+  - Fixed `ReferenceError: onSelectNode is not defined` when rendering `<GraphViewer>` in the Attack Path Graph section
+  - Replaced invalid prop binding `onSelectNode={onSelectNode}` with `onSelectNode={setSelectedNode}`
+
+#### Dashboard — Empty Graph Fallback Data
+- [`frontend/src/lib/graph-data.ts`](../frontend/src/lib/graph-data.ts):
+  - Added a shared fallback attack-path topology dataset for the dashboard graph views
+- [`frontend/src/app/dashboard/page.tsx`](../frontend/src/app/dashboard/page.tsx):
+  - Falls back to the shared graph dataset when `/api/v1/graph` returns no nodes or the request fails
+- [`frontend/src/app/dashboard/topology/page.tsx`](../frontend/src/app/dashboard/topology/page.tsx):
+  - Uses the same shared fallback dataset so the topology tab no longer renders an empty canvas when live data is unavailable
+
+#### GraphViewer — Canvas Null-Safety & Layout Sizing
+- [`frontend/src/components/dashboard/GraphViewer.tsx`](../frontend/src/components/dashboard/GraphViewer.tsx):
+  - Added null-safe label parsing (`(node.label || "").split(...)`) to prevent `TypeError` during Canvas animation frame loops if `label` is missing or undefined
+  - Added link source/target ID null-checks in `linkColor` and `linkWidth` callbacks
+  - Integrated `ResizeObserver` API to dynamically handle viewport and container size changes when switching tabs or resizing the browser window
+  - Added an explicit fallback view (`"No attack path topology data available"`) when `graphData` is empty or null
+
+#### Dashboard & Landing Navbar — Hydration-Safe Theme Toggle
+- [`frontend/src/components/dashboard/TopNavbar.tsx`](../frontend/src/components/dashboard/TopNavbar.tsx):
+  - Removed document-dependent initial theme branching from render-time state initialization
+  - Added post-mount theme sync so the first server render matches the client HTML
+- [`frontend/src/components/landing/Navbar.tsx`](../frontend/src/components/landing/Navbar.tsx):
+  - Applied the same hydration-safe theme initialization to prevent icon mismatches during SSR hydration
+
+### Changed
+
+#### Authentication & Backend Diagnostics Documentation
+- Clarified Supabase GoTrue Auth token exchange flow in `/api/auth/login` proxy and identified default test credentials in automation scripts (`day9_integration.py`, `day11_scenarios.py`)
+- Documented solution for `Network error: unable to reach backend at http://localhost:8001/api/v1/anomalies` by either running Service B (`correlation_response`) or enabling `NEXT_PUBLIC_USE_MOCK_API=true` in `frontend/.env.local`
+
+### Verified
+
+#### Frontend Rendering & TypeScript
+- Verified topology graph renders interactively on `/dashboard?tab=topology` without throwing runtime errors
+- Verified clean TypeScript compilation after prop and canvas viewer fixes
+
+---
+
 ## [0.4.0] — 2026-07-20
 
 ### Summary

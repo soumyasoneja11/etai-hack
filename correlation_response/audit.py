@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-from uuid import uuid4
 
 from shared.errors import StoreUnavailableError
 from shared.schemas import AuditEntry
