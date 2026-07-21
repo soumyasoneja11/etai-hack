@@ -191,6 +191,7 @@ def generate_narrative(
     detected_at: str,
     threat_docs: list[dict[str, Any]],
     user_id: str | None = None,
+    client: Any = None,
 ) -> NarrativeResponse:
     """Generate an analyst narrative using LLM + retrieved threat intel.
 
@@ -250,6 +251,7 @@ def generate_narrative(
             },
         ),
         user_id=user_id,
+        client=client,
     )
 
     return NarrativeResponse(

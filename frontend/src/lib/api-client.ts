@@ -4,8 +4,13 @@
  * Switches between mock (internal Next.js API routes) and the real
  * Python backend based on environment variables:
  *
- *   NEXT_PUBLIC_USE_MOCK_API  — "true" | "1" → mock mode (default)
+ *   NEXT_PUBLIC_USE_MOCK_API  — "true" | "1" → mock mode (opt-in; default OFF)
  *   NEXT_PUBLIC_API_BASE_URL  — B (correlation_response) URL (default http://127.0.0.1:8001)
+ *
+ * SECURITY: mock mode must be OPT-IN. An unset env var previously defaulted to
+ * mock, which silently shipped fabricated data to production. The default is now
+ * "false" (real backend), and next.config.ts fails the production build unless
+ * NEXT_PUBLIC_USE_MOCK_API is explicitly set to "false".
  *
  * All responses follow the standard { success, data, error, meta } envelope
  * defined in shared/envelope.py and mirrored in types/api.ts.
@@ -17,7 +22,8 @@ import type { ApiResponse, ApiErrorBody } from "@/types/api";
 // Environment helpers
 // ---------------------------------------------------------------------------
 
-const RAW_MOCK_FLAG = process.env.NEXT_PUBLIC_USE_MOCK_API ?? "true";
+// Mock mode is opt-in only: default to the real backend when unset.
+const RAW_MOCK_FLAG = process.env.NEXT_PUBLIC_USE_MOCK_API ?? "false";
 
 /** true when the frontend should use the internal Next.js API routes */
 export const IS_MOCK_MODE =

@@ -2,6 +2,11 @@
 
 Every SOAR action, decision, and narrative generation is logged here for
 the dashboard audit trail and compliance.
+
+All helpers accept an optional user-scoped ``client`` (from
+:func:`shared.supabase_client.get_supabase_user`) and ``user_id`` so writes and
+reads respect Row Level Security. Reads additionally filter by ``user_id`` as
+defense in depth.
 """
 
 from __future__ import annotations
@@ -15,9 +20,12 @@ from shared.schemas import AuditEntry
 logger = logging.getLogger(__name__)
 
 
-def _get_store():
-    """Lazy import to avoid circular dependency at module load."""
+def _resolve_client(client: Any):
+    """Return the caller-supplied RLS-scoped client, else the admin client."""
+    if client is not None:
+        return client
     from shared.supabase_client import get_supabase_admin
+
     return get_supabase_admin()
 
 
@@ -26,7 +34,12 @@ def _get_store():
 # ---------------------------------------------------------------------------
 
 
-def log_action(entry: AuditEntry, *, user_id: str | None = None) -> AuditEntry:
+def log_action(
+    entry: AuditEntry,
+    *,
+    user_id: str | None = None,
+    client: Any = None,
+) -> AuditEntry:
     """Write an audit entry to Supabase and emit a structured log line.
 
     Always succeeds from the caller's perspective — Supabase errors are
@@ -58,7 +71,7 @@ def log_action(entry: AuditEntry, *, user_id: str | None = None) -> AuditEntry:
     )
 
     try:
-        _get_store().table("audit_logs").insert(row).execute()
+        _resolve_client(client).table("audit_logs").insert(row).execute()
         logger.debug("Audit entry %s written to Supabase", entry.audit_id)
     except Exception as exc:
         logger.error("Failed to write audit entry %s: %s", entry.audit_id, exc)
@@ -75,6 +88,7 @@ def log_soar_action(
     status: str,
     message: str = "",
     user_id: str | None = None,
+    client: Any = None,
 ) -> None:
     """Write a SOAR action record to Supabase soar_actions table."""
     row: dict[str, Any] = {
@@ -90,7 +104,7 @@ def log_soar_action(
         row["user_id"] = user_id
 
     try:
-        _get_store().table("soar_actions").insert(row).execute()
+        _resolve_client(client).table("soar_actions").insert(row).execute()
     except Exception as exc:
         logger.error("Failed to write SOAR action %s: %s", action_id, exc)
 
@@ -100,68 +114,94 @@ def log_soar_action(
 # ---------------------------------------------------------------------------
 
 
-def get_audit_trail(anomaly_id: str) -> list[dict[str, Any]]:
+def get_audit_trail(
+    anomaly_id: str,
+    *,
+    user_id: str | None = None,
+    client: Any = None,
+) -> list[dict[str, Any]]:
     """Fetch all audit entries for a specific anomaly."""
     try:
-        result = (
-            _get_store()
+        query = (
+            _resolve_client(client)
             .table("audit_logs")
             .select("*")
             .eq("anomaly_id", anomaly_id)
-            .order("created_at", desc=True)
-            .execute()
         )
+        if user_id:
+            query = query.eq("user_id", user_id)
+        result = query.order("created_at", desc=True).execute()
         return result.data or []
     except Exception as exc:
         logger.error("Failed to fetch audit trail for %s: %s", anomaly_id, exc)
         return []
 
 
-def list_audit_logs(*, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+def list_audit_logs(
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    user_id: str | None = None,
+    client: Any = None,
+) -> list[dict[str, Any]]:
     """Paginated list of recent audit entries (newest first)."""
     try:
-        result = (
-            _get_store()
+        query = (
+            _resolve_client(client)
             .table("audit_logs")
             .select("*")
             .order("created_at", desc=True)
-            .range(offset, offset + limit - 1)
-            .execute()
         )
+        if user_id:
+            query = query.eq("user_id", user_id)
+        result = query.range(offset, offset + limit - 1).execute()
         return result.data or []
     except Exception as exc:
         logger.error("Failed to list audit logs: %s", exc)
         return []
 
 
-def list_soar_actions(*, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+def list_soar_actions(
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    user_id: str | None = None,
+    client: Any = None,
+) -> list[dict[str, Any]]:
     """Paginated list of SOAR actions (newest first)."""
     try:
-        result = (
-            _get_store()
+        query = (
+            _resolve_client(client)
             .table("soar_actions")
             .select("*")
             .order("created_at", desc=True)
-            .range(offset, offset + limit - 1)
-            .execute()
         )
+        if user_id:
+            query = query.eq("user_id", user_id)
+        result = query.range(offset, offset + limit - 1).execute()
         return result.data or []
     except Exception as exc:
         logger.error("Failed to list SOAR actions: %s", exc)
         return []
 
 
-def get_soar_action(action_id: str) -> dict[str, Any] | None:
+def get_soar_action(
+    action_id: str,
+    *,
+    user_id: str | None = None,
+    client: Any = None,
+) -> dict[str, Any] | None:
     """Fetch a single SOAR action by action_id."""
     try:
-        result = (
-            _get_store()
+        query = (
+            _resolve_client(client)
             .table("soar_actions")
             .select("*")
             .eq("action_id", action_id)
-            .limit(1)
-            .execute()
         )
+        if user_id:
+            query = query.eq("user_id", user_id)
+        result = query.limit(1).execute()
         rows = result.data or []
         return rows[0] if rows else None
     except Exception as exc:

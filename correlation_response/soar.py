@@ -29,6 +29,7 @@ async def isolate_endpoint(
     asset_id: str,
     actor: str = "system",
     user_id: str | None = None,
+    client: object = None,
 ) -> SOARActionResult:
     """Simulate network isolation of a compromised endpoint."""
     from correlation_response.audit import log_action, log_soar_action
@@ -59,6 +60,7 @@ async def isolate_endpoint(
         status="simulated",
         message=result.message,
         user_id=user_id,
+        client=client,
     )
 
     # Audit trail
@@ -73,6 +75,7 @@ async def isolate_endpoint(
             details={"action_id": action_id, "simulated": True},
         ),
         user_id=user_id,
+        client=client,
     )
 
     return result
@@ -84,6 +87,7 @@ async def block_ip(
     ip_address: str,
     actor: str = "system",
     user_id: str | None = None,
+    client: object = None,
 ) -> SOARActionResult:
     """Simulate firewall block of a malicious IP address."""
     from correlation_response.audit import log_action, log_soar_action
@@ -113,6 +117,7 @@ async def block_ip(
         status="simulated",
         message=result.message,
         user_id=user_id,
+        client=client,
     )
 
     log_action(
@@ -126,6 +131,7 @@ async def block_ip(
             details={"action_id": action_id, "simulated": True},
         ),
         user_id=user_id,
+        client=client,
     )
 
     return result
@@ -137,6 +143,7 @@ async def revoke_credential(
     asset_id: str,
     actor: str = "system",
     user_id: str | None = None,
+    client: object = None,
 ) -> SOARActionResult:
     """Simulate credential revocation / rotation for a compromised asset."""
     from correlation_response.audit import log_action, log_soar_action
@@ -167,6 +174,7 @@ async def revoke_credential(
         status="simulated",
         message=result.message,
         user_id=user_id,
+        client=client,
     )
 
     log_action(
@@ -180,6 +188,7 @@ async def revoke_credential(
             details={"action_id": action_id, "simulated": True},
         ),
         user_id=user_id,
+        client=client,
     )
 
     return result

@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from correlation_response.config import settings
 from correlation_response.correlate import correlate_detection, get_threat_intel, get_threat_intel_bundle
 from correlation_response.supabase_store import anomaly_store
-from shared.auth import require_auth
+from shared.auth import ScopedContext, require_scoped
 from shared.envelope import error_response, success_response
 from shared.schemas import (
     BlockRequest,
@@ -93,7 +93,7 @@ def health():
 @app.post("/api/v1/correlate")
 def correlate(
     detection: DetectionResult,
-    user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """
     Accept a DetectionResult from A and produce:
@@ -123,13 +123,14 @@ def correlate(
     list_item = detection.to_anomaly_list_item(anomaly_id=anomaly_id)
     detail = detection.to_anomaly_detail(anomaly_id=anomaly_id)
 
-    user_id = user.get("sub")
+    user_id = ctx.user_id
     anomaly_store.put(
         anomaly_id=anomaly_id,
         list_item=list_item,
         detail=detail,
         attribution=attribution,
         user_id=user_id,
+        client=ctx.db,
     )
 
     # 3. Neo4j graph update (best-effort, non-blocking)
@@ -217,13 +218,15 @@ def _try_neo4j_update(
 def list_anomalies(
     limit: int = 50,
     offset: int = 0,
-    _user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Return persisted anomalies matching CyberShield Excel schema."""
-    items = anomaly_store.list_items(limit=limit, offset=offset)
+    items = anomaly_store.list_items(
+        limit=limit, offset=offset, user_id=ctx.user_id, client=ctx.db
+    )
     return success_response({
         "items": items,
-        "total": anomaly_store.count(),
+        "total": anomaly_store.count(user_id=ctx.user_id, client=ctx.db),
         "limit": limit,
         "offset": offset,
     })
@@ -249,7 +252,7 @@ def threat_intel(attack_label: str):
 @app.get("/api/v1/graph")
 def get_graph(
     limit: int = 50,
-    _user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """
     Attack-path topology for the dashboard GraphViewer.
@@ -262,7 +265,13 @@ def get_graph(
     """
     from correlation_response.graph.builder import get_attack_graph
 
-    return success_response(get_attack_graph(limit=max(1, min(limit, 200))))
+    return success_response(
+        get_attack_graph(
+            limit=max(1, min(limit, 200)),
+            user_id=ctx.user_id,
+            client=ctx.db,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -270,9 +279,9 @@ def get_graph(
 # ---------------------------------------------------------------------------
 
 @app.get("/api/v1/anomalies/{anomaly_id}")
-def get_anomaly(anomaly_id: str, _user: dict = Depends(require_auth)):
+def get_anomaly(anomaly_id: str, ctx: ScopedContext = Depends(require_scoped)):
     """Return full anomaly detail for a single anomaly."""
-    stored = anomaly_store.get(anomaly_id)
+    stored = anomaly_store.get(anomaly_id, user_id=ctx.user_id, client=ctx.db)
     if stored is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
     return success_response(stored)
@@ -286,13 +295,15 @@ def get_anomaly(anomaly_id: str, _user: dict = Depends(require_auth)):
 def list_attributions(
     limit: int = 50,
     offset: int = 0,
-    _user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Return MITRE ATT&CK attributions."""
-    items = anomaly_store.list_attributions(limit=limit, offset=offset)
+    items = anomaly_store.list_attributions(
+        limit=limit, offset=offset, user_id=ctx.user_id, client=ctx.db
+    )
     return success_response({
         "items": items,
-        "total": anomaly_store.count(),
+        "total": anomaly_store.count(user_id=ctx.user_id, client=ctx.db),
         "limit": limit,
         "offset": offset,
     })
@@ -310,7 +321,7 @@ def list_attributions(
 @app.post("/api/v1/narrative")
 def generate_narrative_endpoint(
     req: NarrativeRequest,
-    user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Generate an analyst-style RAG narrative for an anomaly.
 
@@ -321,12 +332,14 @@ def generate_narrative_endpoint(
     from correlation_response.narrative import generate_narrative
 
     # Fetch anomaly from store
-    stored = anomaly_store.get(req.anomaly_id)
+    stored = anomaly_store.get(req.anomaly_id, user_id=ctx.user_id, client=ctx.db)
     if stored is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
     # Get attribution
-    attrs = anomaly_store.list_attributions(limit=1000, offset=0)
+    attrs = anomaly_store.list_attributions(
+        limit=1000, offset=0, user_id=ctx.user_id, client=ctx.db
+    )
     attribution = next(
         (a for a in attrs if a.get("anomaly_id") == req.anomaly_id),
         None,
@@ -351,7 +364,7 @@ def generate_narrative_endpoint(
     # Retrieve threat intel docs
     threat_docs = get_threat_intel(attack_label)
 
-    user_id = user.get("sub")
+    user_id = ctx.user_id
     result = generate_narrative(
         anomaly_id=req.anomaly_id,
         attack=attack_label,
@@ -363,6 +376,7 @@ def generate_narrative_endpoint(
         detected_at=str(detected_at),
         threat_docs=threat_docs,
         user_id=user_id,
+        client=ctx.db,
     )
 
     # Persist (template fallback included) so GET survives FE reload
@@ -378,6 +392,8 @@ def generate_narrative_endpoint(
             narrative=result.narrative,
             sources=list(result.sources or []),
             generated_at=generated_at_str,
+            user_id=ctx.user_id,
+            client=ctx.db,
         )
     except Exception as exc:
         logger.warning("Failed to persist narrative for %s: %s", req.anomaly_id, exc)
@@ -388,10 +404,10 @@ def generate_narrative_endpoint(
 @app.get("/api/v1/narrative/{anomaly_id}")
 def get_narrative_endpoint(
     anomaly_id: str,
-    _user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Return persisted NarrativeResponse for an anomaly (404 if not generated yet)."""
-    stored = anomaly_store.get(anomaly_id)
+    stored = anomaly_store.get(anomaly_id, user_id=ctx.user_id, client=ctx.db)
     if stored is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
     text = stored.get("narrative")
@@ -412,7 +428,7 @@ def get_narrative_endpoint(
 @app.post("/api/v1/decide")
 def decide_endpoint(
     req: NarrativeRequest,  # reuse — only needs anomaly_id
-    user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Compute a decision recommendation for an anomaly.
 
@@ -422,11 +438,13 @@ def decide_endpoint(
     from correlation_response.audit import log_action
     from correlation_response.decision import compute_decision
 
-    stored = anomaly_store.get(req.anomaly_id)
+    stored = anomaly_store.get(req.anomaly_id, user_id=ctx.user_id, client=ctx.db)
     if stored is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
-    attrs = anomaly_store.list_attributions(limit=1000, offset=0)
+    attrs = anomaly_store.list_attributions(
+        limit=1000, offset=0, user_id=ctx.user_id, client=ctx.db
+    )
     attribution = next(
         (a for a in attrs if a.get("anomaly_id") == req.anomaly_id),
         None,
@@ -457,13 +475,14 @@ def decide_endpoint(
         AuditEntry(
             anomaly_id=req.anomaly_id,
             action_type="decision_computed",
-            actor=user.get("email", "system"),
+            actor=ctx.email or "system",
             target=stored.get("asset_id", ""),
             decision=result.decision,
             status="success",
             details=result.model_dump(mode="json"),
         ),
-        user_id=user.get("sub"),
+        user_id=ctx.user_id,
+        client=ctx.db,
     )
 
     return success_response(result.model_dump(mode="json"))
@@ -476,7 +495,7 @@ def decide_endpoint(
 @app.post("/api/v1/soar/isolate")
 async def soar_isolate(
     req: IsolateRequest,
-    user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Simulate network isolation of a compromised endpoint."""
     from correlation_response import soar
@@ -484,8 +503,9 @@ async def soar_isolate(
     result = await soar.isolate_endpoint(
         anomaly_id=req.anomaly_id,
         asset_id=req.asset_id,
-        actor=user.get("email", "system"),
-        user_id=user.get("sub"),
+        actor=ctx.email or "system",
+        user_id=ctx.user_id,
+        client=ctx.db,
     )
     return success_response(result.model_dump(mode="json"))
 
@@ -493,7 +513,7 @@ async def soar_isolate(
 @app.post("/api/v1/soar/block")
 async def soar_block(
     req: BlockRequest,
-    user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Simulate firewall block of a malicious IP."""
     from correlation_response import soar
@@ -501,8 +521,9 @@ async def soar_block(
     result = await soar.block_ip(
         anomaly_id=req.anomaly_id,
         ip_address=req.ip_address,
-        actor=user.get("email", "system"),
-        user_id=user.get("sub"),
+        actor=ctx.email or "system",
+        user_id=ctx.user_id,
+        client=ctx.db,
     )
     return success_response(result.model_dump(mode="json"))
 
@@ -510,7 +531,7 @@ async def soar_block(
 @app.post("/api/v1/soar/revoke")
 async def soar_revoke(
     req: RevokeRequest,
-    user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Simulate credential revocation for a compromised asset."""
     from correlation_response import soar
@@ -518,8 +539,9 @@ async def soar_revoke(
     result = await soar.revoke_credential(
         anomaly_id=req.anomaly_id,
         asset_id=req.asset_id,
-        actor=user.get("email", "system"),
-        user_id=user.get("sub"),
+        actor=ctx.email or "system",
+        user_id=ctx.user_id,
+        client=ctx.db,
     )
     return success_response(result.model_dump(mode="json"))
 
@@ -532,12 +554,12 @@ async def soar_revoke(
 def list_soar_actions(
     limit: int = 50,
     offset: int = 0,
-    _user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """List recent SOAR actions."""
     from correlation_response.audit import list_soar_actions as _list
 
-    items = _list(limit=limit, offset=offset)
+    items = _list(limit=limit, offset=offset, user_id=ctx.user_id, client=ctx.db)
     return success_response({
         "items": items,
         "limit": limit,
@@ -548,12 +570,12 @@ def list_soar_actions(
 @app.get("/api/v1/soar/actions/{action_id}")
 def get_soar_action_endpoint(
     action_id: str,
-    _user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Get a single SOAR action by ID."""
     from correlation_response.audit import get_soar_action
 
-    action = get_soar_action(action_id)
+    action = get_soar_action(action_id, user_id=ctx.user_id, client=ctx.db)
     if action is None:
         raise HTTPException(status_code=404, detail="SOAR action not found")
     return success_response(action)
@@ -570,21 +592,23 @@ def _apply_human_review(
     action_type: str,
     decision: str,
     note: str | None,
-    user: dict,
+    ctx: ScopedContext,
 ) -> dict[str, Any]:
     from correlation_response.audit import log_action
     from shared.schemas import AuditEntry
 
-    existing = anomaly_store.get(anomaly_id)
+    existing = anomaly_store.get(anomaly_id, user_id=ctx.user_id, client=ctx.db)
     if existing is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
     previous_status = existing.get("status", "new")
-    updated = anomaly_store.update_status(anomaly_id, new_status)
+    updated = anomaly_store.update_status(
+        anomaly_id, new_status, user_id=ctx.user_id, client=ctx.db
+    )
     if updated is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
-    actor = user.get("email") or user.get("sub") or "analyst"
+    actor = ctx.email or ctx.user_id or "analyst"
     details: dict[str, Any] = {
         "previous_status": previous_status,
         "new_status": new_status,
@@ -602,7 +626,8 @@ def _apply_human_review(
             status="success",
             details=details,
         ),
-        user_id=user.get("sub"),
+        user_id=ctx.user_id,
+        client=ctx.db,
     )
     return updated
 
@@ -612,10 +637,12 @@ def review_queue(
     status: str = "new",
     limit: int = 50,
     offset: int = 0,
-    _user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Anomalies needing human review (default status=new)."""
-    items = anomaly_store.list_items(limit=limit, offset=offset, status=status)
+    items = anomaly_store.list_items(
+        limit=limit, offset=offset, status=status, user_id=ctx.user_id, client=ctx.db
+    )
     return success_response({
         "items": items,
         "total": len(items),
@@ -629,7 +656,7 @@ def review_queue(
 def review_approve(
     anomaly_id: str,
     body: ReviewNoteRequest | None = None,
-    user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Human approve → anomaly status acknowledged + audit human_approved."""
     note = body.note if body else None
@@ -639,7 +666,7 @@ def review_approve(
         action_type="human_approved",
         decision="approved",
         note=note,
-        user=user,
+        ctx=ctx,
     )
     return success_response({
         "anomaly_id": anomaly_id,
@@ -652,7 +679,7 @@ def review_approve(
 def review_reject(
     anomaly_id: str,
     body: ReviewNoteRequest | None = None,
-    user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Human reject → anomaly status false_positive + audit human_rejected."""
     note = body.note if body else None
@@ -662,7 +689,7 @@ def review_reject(
         action_type="human_rejected",
         decision="rejected",
         note=note,
-        user=user,
+        ctx=ctx,
     )
     return success_response({
         "anomaly_id": anomaly_id,
@@ -679,12 +706,12 @@ def review_reject(
 def list_audit_endpoint(
     limit: int = 50,
     offset: int = 0,
-    _user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Paginated list of audit log entries."""
     from correlation_response.audit import list_audit_logs
 
-    items = list_audit_logs(limit=limit, offset=offset)
+    items = list_audit_logs(limit=limit, offset=offset, user_id=ctx.user_id, client=ctx.db)
     return success_response({
         "items": items,
         "limit": limit,
@@ -695,12 +722,12 @@ def list_audit_endpoint(
 @app.get("/api/v1/audit/{anomaly_id}")
 def get_audit_trail_endpoint(
     anomaly_id: str,
-    _user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Audit trail for a specific anomaly."""
     from correlation_response.audit import get_audit_trail
 
-    items = get_audit_trail(anomaly_id)
+    items = get_audit_trail(anomaly_id, user_id=ctx.user_id, client=ctx.db)
     return success_response({
         "anomaly_id": anomaly_id,
         "items": items,

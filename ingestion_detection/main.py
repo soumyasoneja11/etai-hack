@@ -24,8 +24,9 @@ from ingestion_detection.correlation_forward import forward_detection_to_correla
 from ingestion_detection.features import derive_entity_id
 from ingestion_detection.predict import ModelNotReadyError, detect_signal, predict_features_list
 from ingestion_detection.supabase_store import signal_store
-from shared.auth import require_admin, require_auth
+from shared.auth import ScopedContext, require_admin, require_auth, require_scoped
 from shared.envelope import error_response, success_response
+from shared.rate_limit import SlidingWindowRateLimiter
 from shared.schemas import (
     BaselineManifest,
     DetectionResult,
@@ -94,13 +95,64 @@ def health():
 # Auth endpoints (public — no auth required)
 # ---------------------------------------------------------------------------
 
+# Per-IP and per-email throttles for the sensitive signup endpoint (P0-3).
+_signup_ip_limiter = SlidingWindowRateLimiter(
+    max_hits=settings.signup_rate_limit_max,
+    window_sec=settings.signup_rate_limit_window_sec,
+)
+_signup_email_limiter = SlidingWindowRateLimiter(
+    max_hits=settings.signup_rate_limit_max,
+    window_sec=settings.signup_rate_limit_window_sec,
+)
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP (honours the first X-Forwarded-For hop)."""
+    fwd = request.headers.get("X-Forwarded-For", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 @app.post("/api/v1/auth/signup")
-def signup(request_body: dict):
-    """Create a new Supabase user account."""
+def signup(request_body: dict, request: Request):
+    """Create a new Supabase user account (invite-gated, rate-limited).
+
+    This is an internal SOC tool, not public SaaS. Signup is CLOSED by default:
+    it requires a valid ``invite_token`` matching ``SIGNUP_INVITE_TOKEN``. If
+    that env var is unset, public signup is disabled entirely and accounts must
+    be provisioned by an admin. ``email_confirm=True`` is intentional — invited
+    users are pre-trusted internal analysts, so we skip the email round-trip.
+    """
+    # 1. Throttle by IP first so invite-token guessing is bounded (P0-3).
+    ip = _client_ip(request)
+    if not _signup_ip_limiter.hit(f"ip:{ip}"):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many signup attempts from this IP. Try again later.",
+        )
+
     email = request_body.get("email")
     password = request_body.get("password")
     if not email or not password:
         raise HTTPException(status_code=422, detail="email and password required")
+
+    # 2. Invite gate — closed unless a matching token is presented.
+    configured = settings.signup_invite_token
+    if not configured:
+        raise HTTPException(
+            status_code=403,
+            detail="Public signup is disabled. Contact an administrator for an account.",
+        )
+    if request_body.get("invite_token") != configured:
+        raise HTTPException(status_code=403, detail="Invalid or missing invite token.")
+
+    # 3. Throttle by email to stop targeted account spam.
+    if not _signup_email_limiter.hit(f"email:{str(email).strip().lower()}"):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many signup attempts for this email. Try again later.",
+        )
 
     try:
         client = get_supabase_admin()
@@ -108,7 +160,9 @@ def signup(request_body: dict):
             "email": email,
             "password": password,
             "email_confirm": True,
-            "user_metadata": {"role": "user"},
+            # Role lives in app_metadata (server-only) — never user_metadata,
+            # which the user can rewrite via auth.updateUser (P0-2).
+            "app_metadata": {"role": "user"},
         })
         return success_response({
             "user_id": result.user.id,
@@ -144,7 +198,8 @@ def login(request_body: dict):
             "user": {
                 "id": result.user.id,
                 "email": result.user.email,
-                "role": (result.user.user_metadata or {}).get("role", "user"),
+                # Role is read from server-controlled app_metadata (P0-2).
+                "role": (result.user.app_metadata or {}).get("role", "user"),
             },
         })
     except Exception as exc:
@@ -183,9 +238,11 @@ def make_admin(request_body: dict, _admin: dict = Depends(require_admin)):
 
     try:
         client = get_supabase_admin()
+        # Role stored in app_metadata (service-role only) so it cannot be
+        # self-assigned by the user via auth.updateUser (P0-2).
         client.auth.admin.update_user_by_id(
             user_id,
-            {"user_metadata": {"role": "admin"}},
+            {"app_metadata": {"role": "admin"}},
         )
         return success_response({"user_id": user_id, "role": "admin"})
     except Exception as exc:
@@ -201,8 +258,7 @@ def _ingest_signal(
     signal: SignalIngestRequest,
     *,
     score: bool,
-    user_payload: dict[str, Any],
-    authorization: str | None = None,
+    ctx: ScopedContext,
 ) -> dict[str, Any]:
     asset_id = signal.asset_id or derive_entity_id(signal.features)
     normalized = signal.model_copy(update={"asset_id": asset_id})
@@ -222,18 +278,21 @@ def _ingest_signal(
             # Malformed / incomplete features — fail the request (Day 8 edge cases)
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    # Persist to Supabase
-    user_id = user_payload.get("sub")
-    stored = signal_store.enqueue(normalized, detection=detection, user_id=user_id)
+    # Persist to Supabase via the caller's RLS-scoped client
+    user_id = ctx.user_id
+    stored = signal_store.enqueue(
+        normalized, detection=detection, user_id=user_id, client=ctx.db
+    )
 
     # Align detection.signal_id with the persisted row before handoff
     if detection is not None and detection.signal_id != stored["signal_id"]:
         detection = detection.model_copy(update={"signal_id": stored["signal_id"]})
 
-    # Best-effort live handoff to B (does not fail ingest)
+    # Best-effort live handoff to B (does not fail ingest). Forward the caller's
+    # bearer token so B correlates + persists under the same tenant.
     correlation_forward = forward_detection_to_correlate(
         detection,
-        authorization=authorization,
+        authorization=f"Bearer {ctx.token}",
     )
 
     if settings.log_requests:
@@ -257,33 +316,21 @@ def _ingest_signal(
 @app.post("/api/v1/signals/ingest")
 def ingest_signal(
     signal: SignalIngestRequest,
-    request: Request,
     score: bool = True,
-    user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """CyberShield-aligned signal ingest (A internal)."""
-    return _ingest_signal(
-        signal,
-        score=score,
-        user_payload=user,
-        authorization=request.headers.get("Authorization"),
-    )
+    return _ingest_signal(signal, score=score, ctx=ctx)
 
 
 @app.post("/api/v1/events/ingest")
 def ingest_event_legacy(
     event: FlowEventIn,
-    request: Request,
     score: bool = True,
-    user: dict = Depends(require_auth),
+    ctx: ScopedContext = Depends(require_scoped),
 ):
     """Legacy Day 2 path — wraps FlowEventIn → SignalIngestRequest."""
-    return _ingest_signal(
-        event.to_signal_request(),
-        score=score,
-        user_payload=user,
-        authorization=request.headers.get("Authorization"),
-    )
+    return _ingest_signal(event.to_signal_request(), score=score, ctx=ctx)
 
 
 @app.post("/api/v1/predict")
@@ -302,14 +349,14 @@ def predict(body: PredictRequest, _user: dict = Depends(require_auth)):
 
 
 @app.get("/api/v1/signals")
-def list_signals(limit: int = 20, _user: dict = Depends(require_auth)):
-    items = signal_store.list_recent(limit=limit)
+def list_signals(limit: int = 20, ctx: ScopedContext = Depends(require_scoped)):
+    items = signal_store.list_recent(limit=limit, user_id=ctx.user_id, client=ctx.db)
     return success_response({"items": items, "total": len(items), "limit": limit, "offset": 0})
 
 
 @app.get("/api/v1/signals/{signal_id}/detection", response_model=None)
-def get_signal_detection(signal_id: str, _user: dict = Depends(require_auth)):
-    stored = signal_store.get(signal_id)
+def get_signal_detection(signal_id: str, ctx: ScopedContext = Depends(require_scoped)):
+    stored = signal_store.get(signal_id, user_id=ctx.user_id, client=ctx.db)
     if stored is None:
         raise HTTPException(status_code=404, detail="signal not found")
     detection = stored.get("detection")
@@ -319,9 +366,9 @@ def get_signal_detection(signal_id: str, _user: dict = Depends(require_auth)):
 
 
 @app.get("/api/v1/events/{event_id}/anomaly")
-def preview_anomaly_legacy(event_id: str, _user: dict = Depends(require_auth)):
+def preview_anomaly_legacy(event_id: str, ctx: ScopedContext = Depends(require_scoped)):
     """Legacy Day 3 baseline preview."""
-    stored = signal_store.get(event_id)
+    stored = signal_store.get(event_id, user_id=ctx.user_id, client=ctx.db)
     if stored is None:
         raise HTTPException(status_code=404, detail="event not found")
     asset_id = stored.get("asset_id") or derive_entity_id(stored.get("features", {}))

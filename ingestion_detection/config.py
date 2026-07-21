@@ -13,5 +13,14 @@ class Settings(BaseSettings):
     correlation_forward_timeout_sec: float = 10.0
     default_scenario: str = "portscan"
 
+    # ----- Signup hardening (P0-3) -----
+    # Public signup is CLOSED unless an invite token is configured. When set,
+    # a request must present a matching `invite_token`. Leave empty to disable
+    # public signup entirely (admins provision accounts via make-admin flow).
+    signup_invite_token: str = ""
+    # Per-IP and per-email sliding-window limits.
+    signup_rate_limit_max: int = 5
+    signup_rate_limit_window_sec: float = 3600.0
+
 
 settings = Settings()

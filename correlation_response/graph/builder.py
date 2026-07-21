@@ -40,10 +40,15 @@ def _dedupe_links(links: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def build_graph_from_store(*, limit: int = 50) -> dict[str, Any]:
-    """Approach A — graph from Supabase anomalies + attributions."""
-    anomalies = anomaly_store.list_items(limit=limit, offset=0)
-    attributions = anomaly_store.list_attributions(limit=limit, offset=0)
+def build_graph_from_store(
+    *,
+    limit: int = 50,
+    user_id: str | None = None,
+    client: Any = None,
+) -> dict[str, Any]:
+    """Approach A — graph from Supabase anomalies + attributions (RLS-scoped)."""
+    anomalies = anomaly_store.list_items(limit=limit, offset=0, user_id=user_id, client=client)
+    attributions = anomaly_store.list_attributions(limit=limit, offset=0, user_id=user_id, client=client)
     attr_by_anomaly = {
         str(a.get("anomaly_id")): a
         for a in attributions
@@ -230,14 +235,20 @@ def build_graph_from_neo4j(*, limit: int = 50) -> dict[str, Any] | None:
     }
 
 
-def get_attack_graph(*, limit: int = 50) -> dict[str, Any]:
+def get_attack_graph(
+    *,
+    limit: int = 50,
+    user_id: str | None = None,
+    client: Any = None,
+) -> dict[str, Any]:
     """
     Return FE-compatible graph data.
 
-    Prefer Neo4j when enabled; on failure/empty fall back to Supabase store.
+    Prefer Neo4j when enabled; on failure/empty fall back to the Supabase store,
+    which is scoped to the caller via ``user_id``/``client`` (RLS).
     Empty data → {nodes: [], links: []} (never None).
     """
     neo = build_graph_from_neo4j(limit=limit)
     if neo is not None and (neo["nodes"] or neo["links"]):
         return neo
-    return build_graph_from_store(limit=limit)
+    return build_graph_from_store(limit=limit, user_id=user_id, client=client)

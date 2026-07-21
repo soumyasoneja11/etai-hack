@@ -1,4 +1,12 @@
-"""Supabase-backed anomaly + attribution store — replaces in-memory store.py."""
+"""Supabase-backed anomaly + attribution store — replaces in-memory store.py.
+
+Every method accepts an optional user-scoped ``client`` (from
+:func:`shared.supabase_client.get_supabase_user`) and ``user_id``. Authenticated
+request paths MUST pass both so Row Level Security is enforced at the database
+*and* an explicit ``user_id`` filter is applied as defense in depth. When no
+client is supplied the service-role client is used (server-only fallback); reads
+still filter by ``user_id`` whenever it is provided.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +16,11 @@ from typing import Any
 from shared.supabase_client import get_supabase_admin
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_client(client: Any):
+    """Return the caller-supplied RLS-scoped client, else the admin client."""
+    return client if client is not None else get_supabase_admin()
 
 
 def _flatten_anomaly_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -34,10 +47,6 @@ class SupabaseAnomalyStore:
         self._anomalies_table = "anomalies"
         self._attributions_table = "attributions"
 
-    @property
-    def _client(self):
-        return get_supabase_admin()
-
     # ----- write -----
 
     def put(
@@ -48,6 +57,7 @@ class SupabaseAnomalyStore:
         attribution: dict[str, Any],
         *,
         user_id: str | None = None,
+        client: Any = None,
     ) -> None:
         """Insert anomaly + attribution rows.
 
@@ -56,8 +66,11 @@ class SupabaseAnomalyStore:
             list_item: AnomalyListItem Pydantic model
             detail: AnomalyDetail Pydantic model
             attribution: MITRE attribution dict
-            user_id: optional owner UUID (for RLS)
+            user_id: owner UUID (required for RLS insert policy)
+            client: user-scoped Supabase client (forwards caller JWT)
         """
+        db = _resolve_client(client)
+
         # --- anomaly row ---
         detail_dict = detail.model_dump(mode="json") if hasattr(detail, "model_dump") else detail
         anomaly_row: dict[str, Any] = {
@@ -89,8 +102,8 @@ class SupabaseAnomalyStore:
             attr_row["user_id"] = user_id
 
         try:
-            self._client.table(self._anomalies_table).insert(anomaly_row).execute()
-            self._client.table(self._attributions_table).insert(attr_row).execute()
+            db.table(self._anomalies_table).insert(anomaly_row).execute()
+            db.table(self._attributions_table).insert(attr_row).execute()
             logger.debug("Stored anomaly %s with attribution", anomaly_id)
         except Exception as exc:
             logger.error("Failed to store anomaly %s: %s", anomaly_id, exc)
@@ -98,16 +111,24 @@ class SupabaseAnomalyStore:
 
     # ----- read -----
 
-    def get(self, anomaly_id: str) -> dict[str, Any] | None:
+    def get(
+        self,
+        anomaly_id: str,
+        *,
+        user_id: str | None = None,
+        client: Any = None,
+    ) -> dict[str, Any] | None:
         """Fetch full anomaly detail by anomaly_id (includes narrative JSONB if present)."""
+        db = _resolve_client(client)
         try:
-            result = (
-                self._client.table(self._anomalies_table)
+            query = (
+                db.table(self._anomalies_table)
                 .select("*")
                 .eq("anomaly_id", anomaly_id)
-                .limit(1)
-                .execute()
             )
+            if user_id:
+                query = query.eq("user_id", user_id)
+            result = query.limit(1).execute()
             rows = result.data or []
             if not rows:
                 return None
@@ -123,9 +144,12 @@ class SupabaseAnomalyStore:
         narrative: str,
         sources: list[str],
         generated_at: str,
+        user_id: str | None = None,
+        client: Any = None,
     ) -> dict[str, Any] | None:
         """Persist NarrativeResponse fields on anomalies.narrative JSONB."""
-        if self.get(anomaly_id) is None:
+        db = _resolve_client(client)
+        if self.get(anomaly_id, user_id=user_id, client=client) is None:
             return None
         payload = {
             "narrative": narrative,
@@ -133,10 +157,15 @@ class SupabaseAnomalyStore:
             "generated_at": generated_at,
         }
         try:
-            self._client.table(self._anomalies_table).update(
-                {"narrative": payload}
-            ).eq("anomaly_id", anomaly_id).execute()
-            return self.get(anomaly_id)
+            update = (
+                db.table(self._anomalies_table)
+                .update({"narrative": payload})
+                .eq("anomaly_id", anomaly_id)
+            )
+            if user_id:
+                update = update.eq("user_id", user_id)
+            update.execute()
+            return self.get(anomaly_id, user_id=user_id, client=client)
         except Exception as exc:
             logger.error("Failed to save narrative for %s: %s", anomaly_id, exc)
             raise
@@ -147,11 +176,14 @@ class SupabaseAnomalyStore:
         limit: int = 50,
         offset: int = 0,
         status: str | None = None,
+        user_id: str | None = None,
+        client: Any = None,
     ) -> list[dict[str, Any]]:
         """Return anomaly list items (newest first), optionally filtered by status."""
+        db = _resolve_client(client)
         try:
             query = (
-                self._client.table(self._anomalies_table)
+                db.table(self._anomalies_table)
                 .select(
                     "anomaly_id, title, severity, status, asset_id, "
                     "detected_at, score, reason"
@@ -160,49 +192,78 @@ class SupabaseAnomalyStore:
             )
             if status:
                 query = query.eq("status", status)
+            if user_id:
+                query = query.eq("user_id", user_id)
             result = query.range(offset, offset + limit - 1).execute()
             return result.data or []
         except Exception as exc:
             logger.error("Failed to list anomalies: %s", exc)
             return []
 
-    def update_status(self, anomaly_id: str, status: str) -> dict[str, Any] | None:
+    def update_status(
+        self,
+        anomaly_id: str,
+        status: str,
+        *,
+        user_id: str | None = None,
+        client: Any = None,
+    ) -> dict[str, Any] | None:
         """Update anomaly lifecycle status. Returns updated row or None if missing."""
-        existing = self.get(anomaly_id)
+        db = _resolve_client(client)
+        existing = self.get(anomaly_id, user_id=user_id, client=client)
         if existing is None:
             return None
         try:
-            self._client.table(self._anomalies_table).update(
-                {"status": status}
-            ).eq("anomaly_id", anomaly_id).execute()
-            return self.get(anomaly_id)
+            update = (
+                db.table(self._anomalies_table)
+                .update({"status": status})
+                .eq("anomaly_id", anomaly_id)
+            )
+            if user_id:
+                update = update.eq("user_id", user_id)
+            update.execute()
+            return self.get(anomaly_id, user_id=user_id, client=client)
         except Exception as exc:
             logger.error("Failed to update status for %s: %s", anomaly_id, exc)
             raise
 
-    def list_attributions(self, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    def list_attributions(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        user_id: str | None = None,
+        client: Any = None,
+    ) -> list[dict[str, Any]]:
         """Return MITRE ATT&CK attributions (newest first)."""
+        db = _resolve_client(client)
         try:
-            result = (
-                self._client.table(self._attributions_table)
+            query = (
+                db.table(self._attributions_table)
                 .select("*")
                 .order("created_at", desc=True)
-                .range(offset, offset + limit - 1)
-                .execute()
             )
+            if user_id:
+                query = query.eq("user_id", user_id)
+            result = query.range(offset, offset + limit - 1).execute()
             return result.data or []
         except Exception as exc:
             logger.error("Failed to list attributions: %s", exc)
             return []
 
-    def count(self) -> int:
-        """Return approximate count of anomalies."""
+    def count(
+        self,
+        *,
+        user_id: str | None = None,
+        client: Any = None,
+    ) -> int:
+        """Return approximate count of anomalies visible to the caller."""
+        db = _resolve_client(client)
         try:
-            result = (
-                self._client.table(self._anomalies_table)
-                .select("id", count="exact")
-                .execute()
-            )
+            query = db.table(self._anomalies_table).select("id", count="exact")
+            if user_id:
+                query = query.eq("user_id", user_id)
+            result = query.execute()
             return result.count or 0
         except Exception as exc:
             logger.error("Failed to count anomalies: %s", exc)

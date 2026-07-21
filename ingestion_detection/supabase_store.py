@@ -12,16 +12,21 @@ from shared.supabase_client import get_supabase_admin
 logger = logging.getLogger(__name__)
 
 
+def _resolve_client(client: Any):
+    """Return the caller-supplied RLS-scoped client, else the admin client."""
+    return client if client is not None else get_supabase_admin()
+
+
 class SupabaseSignalStore:
-    """Persistent signal store backed by Supabase Postgres."""
+    """Persistent signal store backed by Supabase Postgres.
+
+    Authenticated request paths MUST pass the user-scoped ``client`` (from
+    :func:`shared.supabase_client.get_supabase_user`) and ``user_id`` so RLS is
+    enforced and reads are filtered to the caller's own rows.
+    """
 
     def __init__(self) -> None:
         self._table = "signals"
-
-    @property
-    def _client(self):
-        """Lazy client access — avoids import-time errors if Supabase not configured."""
-        return get_supabase_admin()
 
     # ----- write -----
 
@@ -31,6 +36,7 @@ class SupabaseSignalStore:
         detection: DetectionResult | None = None,
         *,
         user_id: str | None = None,
+        client: Any = None,
     ) -> dict[str, Any]:
         """Insert a signal into the signals table.
 
@@ -54,11 +60,7 @@ class SupabaseSignalStore:
             row["user_id"] = user_id
 
         try:
-            result = (
-                self._client.table(self._table)
-                .insert(row)
-                .execute()
-            )
+            _resolve_client(client).table(self._table).insert(row).execute()
             logger.debug("Inserted signal %s", signal_id)
             return {"signal_id": signal_id, "received_at": now}
         except Exception as exc:
@@ -67,45 +69,65 @@ class SupabaseSignalStore:
 
     # ----- read -----
 
-    def list_recent(self, limit: int = 50) -> list[dict[str, Any]]:
-        """Return the most recently received signals."""
+    def list_recent(
+        self,
+        limit: int = 50,
+        *,
+        user_id: str | None = None,
+        client: Any = None,
+    ) -> list[dict[str, Any]]:
+        """Return the most recently received signals (scoped to the caller)."""
         try:
-            result = (
-                self._client.table(self._table)
+            query = (
+                _resolve_client(client)
+                .table(self._table)
                 .select("*")
                 .order("received_at", desc=True)
-                .limit(limit)
-                .execute()
             )
+            if user_id:
+                query = query.eq("user_id", user_id)
+            result = query.limit(limit).execute()
             return result.data or []
         except Exception as exc:
             logger.error("Failed to list signals: %s", exc)
             return []
 
-    def get(self, signal_id: str) -> dict[str, Any] | None:
-        """Fetch a single signal by signal_id."""
+    def get(
+        self,
+        signal_id: str,
+        *,
+        user_id: str | None = None,
+        client: Any = None,
+    ) -> dict[str, Any] | None:
+        """Fetch a single signal by signal_id (scoped to the caller)."""
         try:
-            result = (
-                self._client.table(self._table)
+            query = (
+                _resolve_client(client)
+                .table(self._table)
                 .select("*")
                 .eq("signal_id", signal_id)
-                .limit(1)
-                .execute()
             )
+            if user_id:
+                query = query.eq("user_id", user_id)
+            result = query.limit(1).execute()
             rows = result.data or []
             return rows[0] if rows else None
         except Exception as exc:
             logger.error("Failed to get signal %s: %s", signal_id, exc)
             return None
 
-    def size(self) -> int:
-        """Return approximate count of signals."""
+    def size(
+        self,
+        *,
+        user_id: str | None = None,
+        client: Any = None,
+    ) -> int:
+        """Return approximate count of signals visible to the caller."""
         try:
-            result = (
-                self._client.table(self._table)
-                .select("id", count="exact")
-                .execute()
-            )
+            query = _resolve_client(client).table(self._table).select("id", count="exact")
+            if user_id:
+                query = query.eq("user_id", user_id)
+            result = query.execute()
             return result.count or 0
         except Exception as exc:
             logger.error("Failed to count signals: %s", exc)
