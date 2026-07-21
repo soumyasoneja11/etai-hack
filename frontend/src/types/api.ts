@@ -46,16 +46,24 @@ export type DecisionLevel =
 /** SOAR execution status — matches `SOARStatus` in shared/enums.py */
 export type SOARStatus = "pending" | "executed" | "failed" | "simulated";
 
-/** MITRE ATT&CK tactic labels — matches `MitreTactic` in shared/enums.py */
+/** MITRE ATT&CK tactic labels — matches `MitreTactic` in shared/enums.py.
+ *  Canonical snake_case; kept in sync by tests/test_tactic_casing.py. */
 export type MitreTactic =
   | "reconnaissance"
+  | "resource_development"
   | "initial_access"
   | "execution"
   | "persistence"
   | "privilege_escalation"
+  | "defense_evasion"
+  | "credential_access"
+  | "discovery"
   | "lateral_movement"
+  | "collection"
+  | "command_and_control"
   | "exfiltration"
-  | "impact";
+  | "impact"
+  | "unknown";
 
 // ---------------------------------------------------------------------------
 // Standard API Response Envelope (matching shared/envelope.py)

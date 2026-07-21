@@ -31,6 +31,7 @@ from ingestion_detection.predict import (
 )
 from ingestion_detection.supabase_store import signal_store
 from shared.auth import ScopedContext, require_admin, require_auth, require_scoped
+from shared.cors import get_cors_allowed_origins
 from shared.envelope import error_response, success_response
 from shared.rate_limit import SlidingWindowRateLimiter
 from shared.schemas import (
@@ -90,7 +91,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=get_cors_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -7,6 +7,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from shared.enums import normalize_tactic
+
 logger = logging.getLogger(__name__)
 
 _DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -155,7 +157,9 @@ def correlate_detection(
     canonical, mapping = resolved
     return {
         "mitre_technique_id": mapping["mitre_id"],
-        "mitre_tactic": mapping["tactic"],
+        # Persist snake_case canonical tactic so it matches shared.enums.MitreTactic
+        # and the frontend type union (label_to_mitre.json stores Title Case).
+        "mitre_tactic": normalize_tactic(mapping["tactic"]),
         "technique_name": mapping["technique"],
         "matched_campaign": f"CICIDS2017-{canonical}",
         "confidence": confidence,

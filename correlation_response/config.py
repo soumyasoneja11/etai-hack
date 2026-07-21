@@ -6,6 +6,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # Bind 0.0.0.0 by default so the service is reachable inside a container.
+    # Env-driven via CORR_HOST / CORR_PORT (override CORR_HOST=127.0.0.1 for
+    # local-only dev).
     host: str = "0.0.0.0"
     port: int = 8001
 

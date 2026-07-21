@@ -8,16 +8,40 @@ Severity = Literal["low", "medium", "high", "critical"]
 AnomalyStatus = Literal["new", "investigating", "acknowledged", "contained", "false_positive"]
 ActionStatus = Literal["pending", "approved", "escalated", "rejected", "executed", "failed"]
 ActionType = Literal["isolate_endpoint", "revoke_credential", "block_ip", "snapshot_vm"]
+# Canonical MITRE ATT&CK Enterprise tactics in snake_case. This is the single
+# source of truth for the tactic vocabulary; `mitre_tactic` is always persisted
+# in this form (see normalize_tactic + correlate.py). "unknown" is emitted for
+# unclassified detections (T0000 fallback). Keep frontend/src/types/api.ts
+# MitreTactic in sync (enforced by tests/test_tactic_casing.py).
 MitreTactic = Literal[
     "reconnaissance",
+    "resource_development",
     "initial_access",
     "execution",
     "persistence",
     "privilege_escalation",
+    "defense_evasion",
+    "credential_access",
+    "discovery",
     "lateral_movement",
+    "collection",
+    "command_and_control",
     "exfiltration",
     "impact",
+    "unknown",
 ]
+
+
+def normalize_tactic(value: str | None) -> str:
+    """Normalize any tactic spelling to canonical snake_case.
+
+    Accepts Title Case (as stored in label_to_mitre.json, e.g. "Command and
+    Control", "Discovery") or already-normalized values and returns the
+    snake_case form used everywhere in the API/DB/frontend.
+    """
+    if not value:
+        return "unknown"
+    return value.strip().lower().replace(" ", "_")
 DecisionLevel = Literal["auto_execute", "recommend", "alert_only", "monitor"]
 SOARStatus = Literal["pending", "executed", "failed", "simulated"]
 AuditActionType = Literal[

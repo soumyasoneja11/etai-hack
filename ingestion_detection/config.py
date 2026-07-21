@@ -4,7 +4,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    host: str = "127.0.0.1"
+    # Bind 0.0.0.0 by default so the service is reachable inside a container.
+    # For local-only dev, override with HOST=127.0.0.1 (env or .env). PORT also
+    # env-driven (HOST/PORT).
+    host: str = "0.0.0.0"
     port: int = 8000
     log_requests: bool = True
     # B (correlation_response) — live handoff after scored ingest

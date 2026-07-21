@@ -16,6 +16,7 @@ from correlation_response.config import settings
 from correlation_response.correlate import correlate_detection, get_threat_intel, get_threat_intel_bundle
 from correlation_response.supabase_store import anomaly_store
 from shared.auth import ScopedContext, require_scoped
+from shared.cors import get_cors_allowed_origins
 from shared.envelope import error_response, success_response
 from shared.schemas import (
     BlockRequest,
@@ -49,7 +50,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=get_cors_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
