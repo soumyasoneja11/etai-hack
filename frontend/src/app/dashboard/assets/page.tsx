@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Search, Filter, Download, Server, Shield } from "lucide-react";
+import { Search, Filter, Download, Server } from "lucide-react";
 import { ASSET_INVENTORY } from "@/lib/dummy-data";
 import { cn } from "@/lib/utils";
 

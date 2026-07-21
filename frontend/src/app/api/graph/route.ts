@@ -199,14 +199,15 @@ export async function GET() {
         request_id: requestId,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as Error;
     return NextResponse.json(
       {
         success: false,
         data: null,
         error: {
           code: "INTERNAL_ERROR",
-          message: error.message || "An unexpected error occurred",
+          message: err.message || "An unexpected error occurred",
         },
         meta: {
           timestamp: new Date().toISOString(),

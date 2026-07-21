@@ -42,6 +42,8 @@ def normalize_tactic(value: str | None) -> str:
     if not value:
         return "unknown"
     return value.strip().lower().replace(" ", "_")
+
+
 DecisionLevel = Literal["auto_execute", "recommend", "alert_only", "monitor"]
 SOARStatus = Literal["pending", "executed", "failed", "simulated"]
 AuditActionType = Literal[

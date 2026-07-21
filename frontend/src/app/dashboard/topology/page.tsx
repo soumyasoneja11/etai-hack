@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { Network, ShieldAlert, FileText, Search, Activity, HelpCircle } from "lucide-react";
+import { Network, FileText, Search, Activity, HelpCircle } from "lucide-react";
 import { GraphNode, GraphLink } from "@/app/api/graph/route";
+import { FALLBACK_GRAPH_DATA } from "@/lib/graph-data";
 import { apiGet } from "@/lib/api-client";
 import { motion } from "framer-motion";
 
@@ -34,8 +35,9 @@ export default function TopologyPage() {
     setError(null);
     try {
       const data = await apiGet<{ nodes: GraphNode[]; links: GraphLink[] }>("/graph");
-      setGraphData(data);
+      setGraphData((data.nodes?.length ?? 0) > 0 ? data : FALLBACK_GRAPH_DATA);
     } catch (err) {
+      setGraphData(FALLBACK_GRAPH_DATA);
       setError(err instanceof Error ? err.message : "Network error while loading graph data");
     } finally {
       setLoading(false);
@@ -43,7 +45,9 @@ export default function TopologyPage() {
   };
 
   useEffect(() => {
-    fetchGraphData();
+    queueMicrotask(() => {
+      fetchGraphData();
+    });
   }, []);
 
   const filteredNodes = graphData?.nodes.filter((node) =>
