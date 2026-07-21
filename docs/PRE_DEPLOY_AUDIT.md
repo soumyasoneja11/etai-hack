@@ -1,121 +1,101 @@
 # Pre-Deployment Audit — CyberShield NIC (`etai-hack`)
 
-**Date:** 2026-07-21
-**Scope:** Full codebase — `ingestion_detection/` (A, :8000), `correlation_response/` (B, :8001), `shared/`, `frontend/` (Next.js), `scripts/`, `supabase_migrations/`.
-**Method:** Static scan + cross-check against running services and prior Day 9–11 integration runs.
+**Last updated:** 2026-07-21 (re-scan #2)
+**Scope:** Full codebase — `ingestion_detection/` (A, :8000), `correlation_response/` (B, :8001), `shared/`, `frontend/` (Next.js), `scripts/`, `supabase_migrations/`, CI/Docker.
+**Method:** Static scan + verified against a live `pytest` run and current `git` history.
 
 ---
 
 ## Verdict
 
-**Happy path works end-to-end.** Login → replay PortScan → detect → correlate (T1046) → narrative → decide → mock SOAR → audit → dashboard all pass. Model artifact is present (`ingestion_detection/models/model.joblib`, ~12.7 MB), audit/SOAR persist after migration `003`, and Prompt 1–6 work has largely landed (`correlation_forward.py`, graph endpoint, `/review/*`, `day11_scenarios.py`, `004_anomaly_narrative.sql`, `/auth/login`).
+**End-to-end happy path works and the project is close to deployable.** Since the first audit, the team resolved every P0 and nearly all P1 items (commits `efb3d6a`, `66b4540`, `78a1a08`, `e829247`, `ca49511`, `a6153c9`, `f636fff`).
 
-**Not production-ready.** Serious multi-tenant security holes and no deployment tooling. Fix all **P0** before any shared/hosted deployment.
+- `pytest` → **62 passed, 1 skipped** (auth, RLS scoping, privilege, signup gating, envelope, tactic casing, model readiness, CORS, logging, read-failure).
+- CI (`.github/workflows/ci.yml`): backend lint+tests, frontend lint+build (mock off), Docker image builds.
+- Docker: root `Dockerfile`, `frontend/Dockerfile` (standalone), `docker-compose.yml`.
 
----
-
-## P0 — Blockers (security; these compound into an unauthenticated data-exfil path)
-
-### P0-1. Multi-tenant isolation is effectively OFF
-Every store uses the **service-role key** (`get_supabase_admin()`), which bypasses RLS, and list queries do not filter by `user_id`.
-
-- `shared/supabase_client.py` — `get_supabase_admin()` (service-role, bypasses RLS)
-- `correlation_response/supabase_store.py` — `list_items()`, `list_attributions()` have no `.eq("user_id", ...)`
-- `ingestion_detection/supabase_store.py` — `list_recent()`, `get()` unscoped
-
-**Impact:** any authenticated user reads **all** users' anomalies, signals, audit, SOAR. RLS policies in `001_create_tables.sql` / `003_audit_soar.sql` never execute.
-
-**Fix:** use a user-scoped Supabase client (forward the caller JWT so RLS applies) OR add explicit `user_id` filters on every read; reserve the service-role key for trusted server-only jobs.
-
-### P0-2. Privilege escalation via user-writable `user_metadata`
-- `shared/auth.py` — `require_admin` trusts `payload["user_metadata"]["role"] == "admin"`
-- `ingestion_detection/main.py` — signup + make-admin write role into `user_metadata`
-
-Supabase `user_metadata` (`raw_user_meta_data`) is editable by the user via `auth.updateUser({data:{...}})` → any user can self-promote to admin.
-
-**Fix:** store role in `app_metadata` (admin-only), and make `require_admin` + RLS key off `auth.jwt() -> 'app_metadata'`.
-
-### P0-3. Open, unthrottled signup with pre-confirmed accounts
-- `ingestion_detection/main.py` — `POST /api/v1/auth/signup` is public, no rate limit / invite / CAPTCHA, sets `email_confirm: True`.
-
-**Fix:** invite-gate or disable public signup for this internal SOC tool; add rate limiting.
-
-### P0-4. Frontend ships in MOCK mode by default
-- `frontend/src/lib/api-client.ts` — `NEXT_PUBLIC_USE_MOCK_API ?? "true"`.
-
-`NEXT_PUBLIC_*` is inlined at **build time**; if the build environment doesn't set it to `false`, the deployed app serves fabricated data and never calls the backend.
-
-**Fix:** set `NEXT_PUBLIC_USE_MOCK_API=false` in the build/CI environment; fail the build if unset for prod.
+**Remaining before a real production launch:** mostly frontend "fake data" panels, secret/model operational hygiene, and a few cleanups. No open **P0**. Details below.
 
 ---
 
-## P1 — Correctness / deploy blockers
+## RESOLVED since first audit (verified)
 
-| # | Issue | Location | Fix |
-|---|-------|----------|-----|
-| P1-1 | `requirements.txt` missing `lightgbm`, `joblib` (and `pyarrow`, `openpyxl`). Model is LightGBM → `pip install -r requirements.txt` then load fails. | `requirements.txt` vs `pyproject.toml` | Align manifests; pick one source of truth; pin versions |
-| P1-2 | Model-not-ready silently degrades: ingest catches `ModelNotReadyError`, returns 200 with no detection, no A→B forward. Fresh deploy detects nothing, no error. | `ingestion_detection/main.py`, `predict.py` | Fail loud on startup if model absent; health check should report model status |
-| P1-3 | MITRE tactic casing mismatch: `label_to_mitre.json` stores Title Case (`"Discovery"`, `"Command and Control"`); `shared/enums.py` + `frontend/src/types/api.ts` are snake_case and omit those values. FE union never matches persisted data. | `correlate.py`, `enums.py`, `types/api.ts` | Normalize to snake_case at write time; add missing tactics |
-| P1-4 | CORS hardcoded to `localhost:3000` with `allow_credentials=True`; real FE origin blocked in prod. | `ingestion_detection/main.py`, `correlation_response/main.py` | Env-driven allowed origins |
-| P1-5 | Host binding inconsistent: A binds `127.0.0.1` (unreachable in container), B binds `0.0.0.0`. | `ingestion_detection/config.py`, `correlation_response/config.py` | Env-driven `HOST`/`PORT`; default `0.0.0.0` for containers |
-| P1-6 | `is_configured` checks `supabase_secret_key`, but `get_supabase()` uses `supabase_publishable_key` → passes check yet fails at runtime. | `shared/supabase_config.py`, `supabase_client.py` | Validate the key actually used |
-| P1-7 | JWT: only RS256/ES256, no issuer check; JWKS `lru_cache`d for process life (key rotation → permanent 401 until restart). Some Supabase projects use HS256. | `shared/auth.py` | Confirm signing alg; add issuer check + JWKS TTL/kid-miss refetch + clock-skew leeway |
-| P1-8 | Frontend JWT in `sessionStorage` (XSS-readable); `refresh_token` discarded → sessions die ~1h mid-use. | `frontend/src/lib/api-client.ts` | Add refresh flow; consider more secure storage strategy |
-| P1-9 | No auth guard on `/dashboard` (no `middleware.ts`/layout guard); in mock mode the whole console is open. | `frontend/src/app/dashboard/` | Add route guard / middleware redirect to `/auth/login` |
-
----
-
-## P2 — Robustness / hygiene
-
-- **Silent read failures return empty 200** — if Supabase is down, dashboard shows "no anomalies/audit" instead of an error (dangerous for a SOC tool). `supabase_store.py` (both), `audit.py`.
-- **SOAR/audit write failures invisible** — `/soar/*` returns `200 "simulated"` even when nothing persisted. `correlation_response/audit.py`, `main.py`.
-- **Error envelope flattens codes** — 401/403/503 all become `BAD_REQUEST`; FE can't distinguish auth failures to trigger re-login. Both `main.py`.
-- **Dead code** — `ingestion_detection/queue_store.py`, `correlation_response/store.py` unused; `snapshot_vm` in `shared/enums.py` (and `003` CHECK) has no handler; unused imports in `ingestion_detection/main.py`. (`correlation_base_url` is now used by `correlation_forward.py`.)
-- **`threat_intel_docs` table dead** — code reads `data/threat_intel/corpus.json` from disk; migration `002_threat_intel.sql` unused → schema drift. Pick one source.
-- **Correlate-time `decision` not persisted** — only `/decide` audits it; reload loses the correlate-time decision. (Narrative *is* persisted via `004`.)
-- **Frontend fake panels** likely to look bogus in prod: overview metrics/gauges/charts, world map (loads geography from external CDN `cdn.jsdelivr.net/npm/world-atlas` → fails in air-gapped/CSP-locked nets), Digital Twin (client-side sim), AI Agents, Assets ("12,847 assets"), Settings (hardcoded `cs_live_…` API key, non-persisting toggles).
-- **Orphaned duplicate routes** — `/dashboard/threat-monitor|topology|ai-agents|assets` exist but nav only uses `?tab=`; they drift from the tabbed screens.
-- **No route-level `error.tsx` / `loading.tsx` / `not-found.tsx`** → a render error white-screens the console.
-- **TS smells** likely to trip strict CI: `Function` param type (`threat-monitor/page.tsx`), pervasive `any`, direct state mutation (`selectedAlert.status = ...` in `dashboard/page.tsx`), unused imports.
-- **Accessibility basics** — icon-only buttons lack `aria-label`; sortable `<th>` use `onClick` without keyboard handlers; unlabeled search inputs / selects.
+| Was | Status | Evidence |
+|-----|--------|----------|
+| Multi-tenant isolation OFF (service-role everywhere) | **FIXED** | `shared/supabase_client.py` `get_supabase_user()` forwards caller JWT; `ScopedContext.db` + `require_scoped` used across `correlation_response/main.py`; stores filter by `user_id` + accept scoped `client` (`supabase_store.py`) |
+| Privilege escalation via `user_metadata` | **FIXED** | `shared/auth.py` `_role_from_payload` reads `app_metadata` only |
+| Open, unthrottled signup | **FIXED** | `ingestion_detection/main.py` signup gated by `signup_invite_token` (closed if unset) + per-IP/email sliding-window limiter |
+| Frontend mock-by-default | **FIXED** | `api-client.ts` `?? "false"`; CI builds with `NEXT_PUBLIC_USE_MOCK_API=false` |
+| `requirements.txt` missing lightgbm/joblib | **FIXED** | Fully pinned lock incl. `lightgbm==4.6.0`, `joblib`, `pyarrow`, `openpyxl`, `gunicorn` |
+| Silent model-not-ready degrade | **FIXED** | A `lifespan` loads model, marks UNHEALTHY (503) if missing; scored ingest returns 503 |
+| MITRE tactic casing mismatch | **FIXED** | `66b4540`; `test_tactic_casing.py` passes |
+| CORS hardcoded to localhost | **FIXED** | `shared/cors.py` env-driven `CORS_ALLOWED_ORIGINS` (wildcard rejected with credentials) |
+| Host bound to 127.0.0.1 (A) | **FIXED** | Both services default `0.0.0.0`, env-driven `HOST`/`PORT` |
+| Error envelope flattened codes | **FIXED** | `_STATUS_TO_CODE` maps 401/403/404/422/429/503 |
+| Silent read-failure empty 200 | **FIXED** | `StoreUnavailableError` → 503 handler; `test_read_failure.py` |
+| JWT alg/issuer/JWKS-rotation gaps | **FIXED** | `shared/auth.py`: explicit algs, issuer check, TTL+kid-miss JWKS refetch, leeway; HS256 supported |
+| FE JWT in sessionStorage, no refresh | **FIXED** | In-memory access token + httpOnly refresh cookie; `app/api/auth/{login,refresh}/route.ts` |
+| No `/dashboard` auth guard | **FIXED** | `frontend/src/middleware.ts` + `dashboard/layout.tsx` `ensureAuth()` |
+| No tests / Docker / CI / `.env.example` | **FIXED** | `tests/` suite, `.github/workflows/ci.yml`, Dockerfiles, root + `frontend/.env.example` |
+| A→B handoff manual | **FIXED** | `ingestion_detection/correlation_forward.py` auto-forwards non-BENIGN |
+| Narrative not persisted | **FIXED** | `004_anomaly_narrative.sql` + store persistence |
 
 ---
 
-## Missing entirely (pre-deploy essentials)
+## STILL OPEN
 
-- **No tests** — `tests/` holds only `fixtures/detection_result_portscan.json`. `scripts/*smoke*` are model-optional and manual. Zero coverage on auth, RLS scoping, stores, decision matrix, envelope mapping.
-- **No Dockerfile / docker-compose / CI** — `.github/` absent; no container recipe; `frontend/next.config.ts` empty (no `output: "standalone"`).
-- **No production ASGI config** — `uvicorn.run()` single-process, no workers/Gunicorn, no `$PORT` bind; `logging.basicConfig` only (no structured/JSON logs, no request-id correlation).
-- **No root `.env.example`** — only `frontend/.env.example`. Required Supabase vars (`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_JWKS_URL`, `SUPABASE_SERVICE_ROLE_KEY`) and optional `CORR_*` undocumented.
-- **Data not in repo** — CICIDS CSVs + baselines are gitignored; replay/baseline are non-functional on a clean checkout. Document the data-bootstrap steps.
+### P1 — should fix before a credible production/customer demo
+
+**P1-1. Dashboard is full of hardcoded dummy data (renders even in real mode).**
+These will show fabricated numbers to a live user:
+- Overview metrics/gauges — `DASHBOARD_METRICS` (`frontend/src/app/dashboard/page.tsx:422,439`)
+- World threat map — `THREAT_ORIGINS` + external CDN `world-atlas` (`components/dashboard/charts/WorldThreatMap.tsx:11`) → also **fails in air-gapped/CSP-locked** networks
+- Threat feed — `THREAT_FEED` (`page.tsx:564`)
+- Digital Twin — client-side sim (`page.tsx:335,1383`)
+- AI Agents — `AI_AGENTS` (`ai-agents/page.tsx:5`)
+- Assets — `ASSET_INVENTORY`, fake "12,847 assets" (`assets/page.tsx`)
+- Settings — hardcoded `cs_live_...` API key + non-persisting toggles (`page.tsx:1811,1823`)
+
+*Fix:* gate each panel on live data; hide/deactivate panels with no backend; remove the fake API key.
+
+**P1-2. Secrets & model are operational externalities not enforced by the repo.**
+- Real `.env` must carry `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS) — ensure it lives only server-side, never in a `NEXT_PUBLIC_` var.
+- `model.joblib` is git-ignored (correct) but there is **no artifact provenance/versioning** in deploy; a bad/missing model only surfaces at runtime (503). Document how the model is shipped into the image/volume.
+- `InconsistentVersionWarning`: model pickled with scikit-learn 1.7.0, runtime has 1.9.0 → pin sklearn consistently between train and serve to avoid silent behavior drift.
+
+### P2 — cleanup / hardening
+
+- **Orphaned duplicate routes** — `dashboard/{threat-monitor,topology,ai-agents,assets}/page.tsx` are unreachable from nav (`constants.ts` only uses `?tab=`); they duplicate the tabbed screens and will drift. Remove or wire them.
+- **Root-level error boundaries missing** — `error.tsx`/`loading.tsx`/`not-found.tsx` exist only under `app/dashboard/`, not `app/`. A crash outside the dashboard white-screens.
+- **Test deps not in the lock** — `pytest`/`ruff` are installed ad-hoc (CI does `pip install pytest ruff`; local venv lacked pytest). Add a `[project.optional-dependencies].dev` group so `pip install -e .[dev]` is reproducible.
+- **Dead code / dead enum** — `ingestion_detection/queue_store.py`, `correlation_response/store.py` unused; `snapshot_vm` in `shared/enums.py` (+ `003` CHECK) has no handler.
+- **`threat_intel_docs` table unused** — code reads `data/threat_intel/corpus.json`; migration `002` is schema drift. Wire it or drop it (one source of truth).
+- **Correlate-time `decision` not persisted** — only `/decide` audits it; a reload loses the correlate-time decision (no decisions table).
+- **Data bootstrap undocumented** — CICIDS CSVs + baselines are git-ignored, so replay/baseline/`day9_integration.py` are non-functional on a clean checkout. Document where to place `data/*.csv` and how to build baselines.
+- **`starlette.testclient` deprecation warning** — harmless now; keep an eye on the httpx/starlette pin.
 
 ---
 
-## What is already working (do not re-do)
+## Deployment checklist (go-live)
 
-- ML detection: LightGBM model present; PortScan predicted correctly; feature validation + edge-case handling.
-- A→B: correlate → MITRE (T1046), narrative (template fallback, RAG sources), decide, mock SOAR, audit — all return 200 and persist (post `003`).
-- Auto A→B forward after non-BENIGN ingest (`ingestion_detection/correlation_forward.py`).
-- Graph endpoint (`GET /api/v1/graph`) and `/soar/*`, `/review/*`, `/audit` on B.
-- Frontend: Bearer auth injection, `apiLogin` via GoTrue, `/auth/login` page, live audit fetch, anomalies `{items}` shape aligned, mitigation wired to `/soar/*` in real mode.
-- Migrations `001`–`004` exist; `003`/`004` applied.
-
----
-
-## Recommended fix order
-
-1. **P0 security together** — user-scoped Supabase reads (respect RLS) or `user_id` filters; move role to `app_metadata`; gate signup; enforce `USE_MOCK_API=false` in build env.
-2. **P1-1 / P1-2** — fix `requirements.txt`; make missing model a hard, visible failure.
-3. **P1-3 / P1-4 / P1-5** — tactic casing + env-driven CORS/host so the real frontend works end-to-end.
-4. **P2 + tooling** — honest empty/error states, error boundaries, Dockerfiles + ASGI workers + root `.env.example`, and a minimal pytest suite (auth, RLS scoping, decision, envelope).
+- [ ] Set real `.env` from `.env.example`; confirm `SUPABASE_SERVICE_ROLE_KEY` is server-only.
+- [ ] Set `CORS_ALLOWED_ORIGINS` to the real frontend origin(s) — no wildcard.
+- [ ] Build frontend with `NEXT_PUBLIC_USE_MOCK_API=false` and correct `NEXT_PUBLIC_API_BASE_URL` (B's public URL).
+- [ ] Ship `model.joblib` into the backend image/volume; verify `/health` is 200 (not 503) on boot.
+- [ ] Apply migrations `001`–`004` to the target Supabase project.
+- [ ] Provision the first admin via service-role (`app_metadata.role=admin`), keep signup closed (blank invite token) or set an invite token.
+- [ ] Confirm `pytest -q` and both Docker images build in CI on the release commit.
+- [ ] Decide/hide the dummy panels (P1-1) so the live UI shows only backed data.
+- [ ] Load CICIDS CSVs + build baselines if replay/scenarios are part of the demo.
 
 ---
 
-## Severity summary
+## Severity summary (current)
 
 | Priority | Count | Theme |
 |----------|-------|-------|
-| P0 | 4 | Tenant isolation, priv-esc, open signup, mock-by-default |
-| P1 | 9 | Deps, silent model degrade, contract casing, CORS/host/env, JWT, auth guard |
-| P2 | ~10 | Silent failures, dead code, fake panels, TS/a11y hygiene |
-| Missing | 5 | Tests, Docker/CI, ASGI/logging, env template, data bootstrap |
+| P0 | 0 | — (all previously-open P0 resolved) |
+| P1 | 2 | Dummy-data panels in live UI; secret/model operational hygiene |
+| P2 | ~7 | Orphaned routes, root error boundaries, dev-deps, dead code, table drift, decision persistence, data bootstrap |
+
+**Bottom line:** backend + integration are production-grade after the recent hardening; the main pre-launch work is making the **frontend show only real data** and tightening deployment/secret/model operations.
