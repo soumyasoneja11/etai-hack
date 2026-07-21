@@ -1,4 +1,6 @@
-export const FALLBACK_GRAPH_DATA = {
+import type { GraphNode, GraphLink } from "@/app/api/graph/route";
+
+export const FALLBACK_GRAPH_DATA: { nodes: GraphNode[]; links: GraphLink[] } = {
   nodes: [
     {
       id: "asset-gw-external",
@@ -48,4 +50,4 @@ export const FALLBACK_GRAPH_DATA = {
     { source: "attack-sqli", target: "asset-web-dmz", label: "Exploits", animated: true },
     { source: "asset-gw-external", target: "asset-web-dmz", label: "Forwards Traffic", animated: true },
   ],
-} as const;
+};
