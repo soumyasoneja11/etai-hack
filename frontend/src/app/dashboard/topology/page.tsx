@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { Network, ShieldAlert, FileText, Search, Activity, HelpCircle } from "lucide-react";
 import { GraphNode, GraphLink } from "@/app/api/graph/route";
+import { apiGet } from "@/lib/api-client";
 import { motion } from "framer-motion";
 
 // Lazy load graph renderer
@@ -32,15 +33,10 @@ export default function TopologyPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/graph");
-      const json = await res.json();
-      if (json.success) {
-        setGraphData(json.data);
-      } else {
-        setError(json.error?.message || "Failed to load attack path graph");
-      }
+      const data = await apiGet<{ nodes: GraphNode[]; links: GraphLink[] }>("/graph");
+      setGraphData(data);
     } catch (err) {
-      setError("Network error while loading graph data");
+      setError(err instanceof Error ? err.message : "Network error while loading graph data");
     } finally {
       setLoading(false);
     }

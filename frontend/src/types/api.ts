@@ -101,6 +101,14 @@ export interface AnomalyListItem {
   reason: string;
 }
 
+/** GET /anomalies list envelope data — matches B `success_response({ items, total, ... })` */
+export interface AnomalyListResponse {
+  items: AnomalyListItem[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+}
+
 /** GET /anomalies/{anomaly_id} detail — matches `AnomalyDetail` in schemas.py */
 export interface AnomalyDetail {
   anomaly_id: string;
@@ -114,6 +122,18 @@ export interface AnomalyDetail {
   baseline_deviation: number;
   reason: string;
   raw_signal_ref: string;
+  /** Persisted analyst narrative (optional until POST /narrative) */
+  narrative?: string | null;
+  narrative_sources?: string[] | null;
+  narrative_generated_at?: string | null;
+}
+
+/** POST/GET /narrative — matches `NarrativeResponse` in schemas.py */
+export interface NarrativeResponse {
+  anomaly_id: string;
+  narrative: string;
+  sources: string[];
+  generated_at: string;
 }
 
 /** WebSocket anomaly.created payload — matches `AnomalyCreatedEvent` in schemas.py */
@@ -154,17 +174,6 @@ export interface SOARActionResult {
   executed_at: string;
   message: string;
   simulated: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// RAG Narrative (matching shared/schemas.py NarrativeResponse)
-// ---------------------------------------------------------------------------
-
-export interface NarrativeResponse {
-  anomaly_id: string;
-  narrative: string;
-  sources: string[];
-  generated_at: string;
 }
 
 // ---------------------------------------------------------------------------

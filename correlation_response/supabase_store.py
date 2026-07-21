@@ -10,6 +10,23 @@ from shared.supabase_client import get_supabase_admin
 logger = logging.getLogger(__name__)
 
 
+def _flatten_anomaly_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Expand narrative JSONB into top-level fields for the API consumer."""
+    out = dict(row)
+    bundle = out.pop("narrative", None)
+    if isinstance(bundle, dict):
+        out["narrative"] = bundle.get("narrative")
+        out["narrative_sources"] = bundle.get("sources") or []
+        out["narrative_generated_at"] = bundle.get("generated_at")
+        out["narrative_bundle"] = bundle
+    else:
+        out["narrative"] = None
+        out["narrative_sources"] = None
+        out["narrative_generated_at"] = None
+        out["narrative_bundle"] = None
+    return out
+
+
 class SupabaseAnomalyStore:
     """Persistent anomaly store backed by Supabase Postgres."""
 
@@ -82,7 +99,7 @@ class SupabaseAnomalyStore:
     # ----- read -----
 
     def get(self, anomaly_id: str) -> dict[str, Any] | None:
-        """Fetch full anomaly detail by anomaly_id."""
+        """Fetch full anomaly detail by anomaly_id (includes narrative JSONB if present)."""
         try:
             result = (
                 self._client.table(self._anomalies_table)
@@ -92,28 +109,76 @@ class SupabaseAnomalyStore:
                 .execute()
             )
             rows = result.data or []
-            return rows[0] if rows else None
+            if not rows:
+                return None
+            return _flatten_anomaly_row(rows[0])
         except Exception as exc:
             logger.error("Failed to get anomaly %s: %s", anomaly_id, exc)
             return None
 
-    def list_items(self, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
-        """Return anomaly list items (newest first)."""
+    def save_narrative(
+        self,
+        anomaly_id: str,
+        *,
+        narrative: str,
+        sources: list[str],
+        generated_at: str,
+    ) -> dict[str, Any] | None:
+        """Persist NarrativeResponse fields on anomalies.narrative JSONB."""
+        if self.get(anomaly_id) is None:
+            return None
+        payload = {
+            "narrative": narrative,
+            "sources": sources,
+            "generated_at": generated_at,
+        }
         try:
-            result = (
+            self._client.table(self._anomalies_table).update(
+                {"narrative": payload}
+            ).eq("anomaly_id", anomaly_id).execute()
+            return self.get(anomaly_id)
+        except Exception as exc:
+            logger.error("Failed to save narrative for %s: %s", anomaly_id, exc)
+            raise
+
+    def list_items(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return anomaly list items (newest first), optionally filtered by status."""
+        try:
+            query = (
                 self._client.table(self._anomalies_table)
                 .select(
                     "anomaly_id, title, severity, status, asset_id, "
                     "detected_at, score, reason"
                 )
                 .order("detected_at", desc=True)
-                .range(offset, offset + limit - 1)
-                .execute()
             )
+            if status:
+                query = query.eq("status", status)
+            result = query.range(offset, offset + limit - 1).execute()
             return result.data or []
         except Exception as exc:
             logger.error("Failed to list anomalies: %s", exc)
             return []
+
+    def update_status(self, anomaly_id: str, status: str) -> dict[str, Any] | None:
+        """Update anomaly lifecycle status. Returns updated row or None if missing."""
+        existing = self.get(anomaly_id)
+        if existing is None:
+            return None
+        try:
+            self._client.table(self._anomalies_table).update(
+                {"status": status}
+            ).eq("anomaly_id", anomaly_id).execute()
+            return self.get(anomaly_id)
+        except Exception as exc:
+            logger.error("Failed to update status for %s: %s", anomaly_id, exc)
+            raise
 
     def list_attributions(self, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """Return MITRE ATT&CK attributions (newest first)."""

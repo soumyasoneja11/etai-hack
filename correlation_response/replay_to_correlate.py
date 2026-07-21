@@ -1,5 +1,10 @@
 """
-Replay bridge — read detections from A's signal queue, feed into B's correlate.
+Backfill bridge — read detections from A's signal queue, feed into B's correlate.
+
+Live traffic no longer needs this: A's scored ingest best-effort POSTs non-BENIGN
+detections to B (`correlation_forward` on the ingest response). Keep this module
+for replaying historical signals that predate the live handoff, or when
+CORRELATION_FORWARD_ENABLED=false.
 
 Usage:
   python -m correlation_response.replay_to_correlate --token <JWT>

@@ -169,6 +169,10 @@ class AnomalyDetail(BaseModel):
     baseline_deviation: float
     reason: str
     raw_signal_ref: str
+    # Optional persisted RAG narrative (NarrativeResponse fields minus anomaly_id)
+    narrative: str | None = None
+    narrative_sources: list[str] | None = None
+    narrative_generated_at: datetime | None = None
 
 
 class AnomalyCreatedEvent(BaseModel):
@@ -316,6 +320,12 @@ class BlockRequest(BaseModel):
 class RevokeRequest(BaseModel):
     anomaly_id: str
     asset_id: str
+
+
+class ReviewNoteRequest(BaseModel):
+    """Optional body for human review approve/reject."""
+
+    note: str | None = None
 
 
 class SOARActionResult(BaseModel):

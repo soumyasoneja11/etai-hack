@@ -5,7 +5,7 @@
  * Python backend based on environment variables:
  *
  *   NEXT_PUBLIC_USE_MOCK_API  — "true" | "1" → mock mode (default)
- *   NEXT_PUBLIC_API_BASE_URL  — real backend URL (default http://localhost:8000)
+ *   NEXT_PUBLIC_API_BASE_URL  — B (correlation_response) URL (default http://127.0.0.1:8001)
  *
  * All responses follow the standard { success, data, error, meta } envelope
  * defined in shared/envelope.py and mirrored in types/api.ts.
@@ -23,9 +23,9 @@ const RAW_MOCK_FLAG = process.env.NEXT_PUBLIC_USE_MOCK_API ?? "true";
 export const IS_MOCK_MODE =
   RAW_MOCK_FLAG === "true" || RAW_MOCK_FLAG === "1";
 
-/** Python backend base URL — only used when IS_MOCK_MODE is false */
+/** B (correlation_response) base URL — only used when IS_MOCK_MODE is false */
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8001";
 
 // ---------------------------------------------------------------------------
 // Bearer token management
@@ -92,7 +92,10 @@ export class ApiError extends Error {
  * Maps a logical endpoint path to the correct URL depending on mode.
  *
  * In mock mode:  "/anomalies"  →  "/api/alerts"   (Next.js API route)
- * In real mode:  "/anomalies"  →  "http://localhost:8000/api/v1/anomalies"
+ * In real mode:  "/anomalies"  →  "http://127.0.0.1:8001/api/v1/anomalies"
+ *
+ * Threat intel uses a path param on B: GET /api/v1/threat-intel/{attack_label}.
+ * In mock mode that becomes /api/threat-intel?attack_label=...
  *
  * Paths that don't have an explicit mock mapping are passed through as-is
  * (prepended with "/api" in mock mode or "${API_BASE_URL}/api/v1" in real mode).
@@ -105,19 +108,34 @@ const MOCK_PATH_MAP: Record<string, string> = {
 
 function resolveUrl(path: string, queryParams?: Record<string, string>): string {
   let url: string;
+  const threatIntelMatch = path.match(/^\/threat-intel\/(.+)$/);
 
   if (IS_MOCK_MODE) {
-    url = MOCK_PATH_MAP[path] ?? `/api${path}`;
+    if (threatIntelMatch) {
+      const label = decodeURIComponent(threatIntelMatch[1]);
+      url = `/api/threat-intel?attack_label=${encodeURIComponent(label)}`;
+    } else {
+      url = MOCK_PATH_MAP[path] ?? `/api${path}`;
+    }
   } else {
     url = `${API_BASE_URL}/api/v1${path}`;
   }
 
   if (queryParams && Object.keys(queryParams).length > 0) {
     const searchParams = new URLSearchParams(queryParams);
-    url += `?${searchParams.toString()}`;
+    const separator = url.includes("?") ? "&" : "?";
+    url += `${separator}${searchParams.toString()}`;
   }
 
   return url;
+}
+
+/** On HTTP 401, clear the JWT and send the user to the login page. */
+function handleUnauthorized(): void {
+  clearToken();
+  if (typeof window !== "undefined" && !window.location.pathname.startsWith("/auth/login")) {
+    window.location.href = "/auth/login";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +190,9 @@ export async function apiGet<T>(
 
   // Non-2xx HTTP status
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+    }
     let body: ApiErrorBody | null = null;
     try {
       const json: ApiResponse<unknown> = await response.json();
@@ -239,6 +260,9 @@ export async function apiPost<T>(
   }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+    }
     let errorBody: ApiErrorBody | null = null;
     try {
       const json: ApiResponse<unknown> = await response.json();

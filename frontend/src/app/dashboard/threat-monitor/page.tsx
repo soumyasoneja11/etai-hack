@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Search, Filter, RefreshCw, AlertOctagon, ShieldAlert, ArrowUpDown, ChevronLeft, ChevronRight, Play } from "lucide-react";
-import { AnomalyListItem } from "@/app/api/alerts/route";
+import type { AnomalyListItem, AnomalyListResponse } from "@/types/api";
+import { apiGet } from "@/lib/api-client";
 import { motion } from "framer-motion";
 
 export default function ThreatMonitorPage() {
@@ -27,15 +28,15 @@ export default function ThreatMonitorPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/alerts");
-      const json = await res.json();
-      if (json.success) {
-        setAlerts(json.data);
-      } else {
-        setError(json.error?.message || "Failed to load alerts");
+      const data = await apiGet<AnomalyListResponse>("/anomalies");
+      if (!data || !Array.isArray(data.items)) {
+        setError("Unexpected anomalies response shape");
+        setAlerts([]);
+        return;
       }
+      setAlerts(data.items);
     } catch (err) {
-      setError("Network error while loading alerts");
+      setError(err instanceof Error ? err.message : "Network error while loading alerts");
     } finally {
       setLoading(false);
     }

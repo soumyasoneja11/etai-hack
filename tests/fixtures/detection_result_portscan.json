@@ -1,7 +1,7 @@
 {
-  "signal_id": "f048cffb-636f-4042-b26e-523e2fde9689",
+  "signal_id": "d73ab2e4-1d76-48a2-afdf-702d30c7e8a8",
   "asset_id": "dst-80-win-8192",
-  "detected_at": "2026-07-12T17:37:20.717824Z",
+  "detected_at": "2026-07-20T14:10:18.274073Z",
   "attack": "PortScan",
   "confidence": 99.5,
   "anomaly_score": 0.995,

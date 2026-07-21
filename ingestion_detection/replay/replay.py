@@ -1,10 +1,19 @@
 """
 Replay CICIDS2017 rows to A's ingest API (CyberShield-aligned).
 
+Scored ingest best-effort forwards non-BENIGN detections to B
+(see ingestion_detection.correlation_forward). No separate bridge needed
+for live rows.
+
 Usage:
   python -m ingestion_detection.replay.replay
   python -m ingestion_detection.replay.replay --scenario portscan --max-rows 50
   python -m ingestion_detection.replay.replay --token <JWT> --max-rows 5
+
+Smoke (A:8000 B:8001, AUTH_TOKEN set):
+  python -m ingestion_detection.replay.replay --scenario portscan --max-rows 1 --token "$AUTH_TOKEN"
+  curl -s -H "Authorization: Bearer $AUTH_TOKEN" \\
+    "http://127.0.0.1:8001/api/v1/anomalies?limit=5"
 """
 
 from __future__ import annotations
@@ -62,6 +71,10 @@ def iter_replay_rows(
     max_rows: int | None = None,
     phase: str = "attack",
 ) -> tuple[pd.DataFrame, list[str], int, int]:
+    if not scenario.path.exists():
+        raise FileNotFoundError(
+            f"Scenario CSV missing for '{scenario.name}': {scenario.path}"
+        )
     df = load_flow_csv(scenario.path)
     # Use training feature_order so ingest validation always sees a complete map.
     feature_columns = _load_feature_order()

@@ -21,6 +21,38 @@ def _normalize_attack_label(label: str) -> str:
     return label.strip().casefold()
 
 
+# Common ML / CICIDS aliases → keys in label_to_mitre.json
+_ATTACK_ALIASES: dict[str, str] = {
+    "botnet": "Bot",
+    "bot": "Bot",
+    "ddos": "DDoS",
+    "dos": "DDoS",
+    "portscan": "PortScan",
+    "port scan": "PortScan",
+    "port_scan": "PortScan",
+}
+
+
+def _resolve_label_mapping(
+    attack: str,
+    label_map: dict[str, dict[str, Any]],
+) -> tuple[str, dict[str, Any]] | None:
+    """Return (canonical_label, mapping) or None if unknown (T0000 is a bug for known classes)."""
+    if attack in label_map:
+        return attack, label_map[attack]
+
+    folded = _normalize_attack_label(attack)
+    for key, mapping in label_map.items():
+        if _normalize_attack_label(key) == folded:
+            return key, mapping
+
+    alias = _ATTACK_ALIASES.get(folded)
+    if alias and alias in label_map:
+        return alias, label_map[alias]
+
+    return None
+
+
 def _load_label_map() -> dict[str, dict[str, Any]]:
     global _LABEL_MAP
     if _LABEL_MAP is None:
@@ -106,11 +138,12 @@ def correlate_detection(
       matched_campaign, confidence
     """
     label_map = _load_label_map()
-    mapping = label_map.get(attack)
+    resolved = _resolve_label_mapping(attack, label_map)
 
-    if mapping is None:
-        # Fallback for unknown labels — mark as unclassified
-        logger.warning("No MITRE mapping for label '%s', returning unclassified", attack)
+    if resolved is None:
+        # Fallback for unknown labels — mark as unclassified.
+        # Known CICIDS classes (PortScan/DDoS/Bot/...) must never land here; that is a mapping bug.
+        logger.warning("No MITRE mapping for label '%s', returning unclassified (T0000)", attack)
         return {
             "mitre_technique_id": "T0000",
             "mitre_tactic": "unknown",
@@ -119,10 +152,11 @@ def correlate_detection(
             "confidence": confidence,
         }
 
+    canonical, mapping = resolved
     return {
         "mitre_technique_id": mapping["mitre_id"],
         "mitre_tactic": mapping["tactic"],
         "technique_name": mapping["technique"],
-        "matched_campaign": f"CICIDS2017-{attack}",
+        "matched_campaign": f"CICIDS2017-{canonical}",
         "confidence": confidence,
     }

@@ -22,6 +22,7 @@ from shared.schemas import (
     DetectionResult,
     IsolateRequest,
     NarrativeRequest,
+    ReviewNoteRequest,
     RevokeRequest,
 )
 
@@ -242,6 +243,29 @@ def threat_intel(attack_label: str):
 
 
 # ---------------------------------------------------------------------------
+# GET /api/v1/graph (authenticated)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/v1/graph")
+def get_graph(
+    limit: int = 50,
+    _user: dict = Depends(require_auth),
+):
+    """
+    Attack-path topology for the dashboard GraphViewer.
+
+    Contract (matches frontend GraphNode / GraphLink):
+      { nodes: [{id, label, type: "asset"|"attack"|"mitre", severity?, details?}],
+        links: [{source, target, label, animated?}] }
+    Built from recent anomalies + attributions; Neo4j preferred when configured.
+    Empty store → 200 with nodes=[], links=[].
+    """
+    from correlation_response.graph.builder import get_attack_graph
+
+    return success_response(get_attack_graph(limit=max(1, min(limit, 200))))
+
+
+# ---------------------------------------------------------------------------
 # GET /api/v1/anomalies/{anomaly_id} (authenticated)
 # ---------------------------------------------------------------------------
 
@@ -292,6 +316,7 @@ def generate_narrative_endpoint(
 
     Retrieves threat intel docs, calls LLM (Gemini), returns structured
     narrative. Falls back to template if LLM is unavailable.
+    Persists narrative on the anomaly row for later GET.
     """
     from correlation_response.narrative import generate_narrative
 
@@ -340,7 +365,44 @@ def generate_narrative_endpoint(
         user_id=user_id,
     )
 
+    # Persist (template fallback included) so GET survives FE reload
+    try:
+        generated_at = result.generated_at
+        generated_at_str = (
+            generated_at.isoformat()
+            if hasattr(generated_at, "isoformat")
+            else str(generated_at)
+        )
+        anomaly_store.save_narrative(
+            req.anomaly_id,
+            narrative=result.narrative,
+            sources=list(result.sources or []),
+            generated_at=generated_at_str,
+        )
+    except Exception as exc:
+        logger.warning("Failed to persist narrative for %s: %s", req.anomaly_id, exc)
+
     return success_response(result.model_dump(mode="json"))
+
+
+@app.get("/api/v1/narrative/{anomaly_id}")
+def get_narrative_endpoint(
+    anomaly_id: str,
+    _user: dict = Depends(require_auth),
+):
+    """Return persisted NarrativeResponse for an anomaly (404 if not generated yet)."""
+    stored = anomaly_store.get(anomaly_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="anomaly not found")
+    text = stored.get("narrative")
+    if not text:
+        raise HTTPException(status_code=404, detail="narrative not generated yet")
+    return success_response({
+        "anomaly_id": anomaly_id,
+        "narrative": text,
+        "sources": stored.get("narrative_sources") or [],
+        "generated_at": stored.get("narrative_generated_at"),
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -495,6 +557,118 @@ def get_soar_action_endpoint(
     if action is None:
         raise HTTPException(status_code=404, detail="SOAR action not found")
     return success_response(action)
+
+
+# ---------------------------------------------------------------------------
+# Human review (authenticated) — approve / reject / queue
+# ---------------------------------------------------------------------------
+
+def _apply_human_review(
+    *,
+    anomaly_id: str,
+    new_status: str,
+    action_type: str,
+    decision: str,
+    note: str | None,
+    user: dict,
+) -> dict[str, Any]:
+    from correlation_response.audit import log_action
+    from shared.schemas import AuditEntry
+
+    existing = anomaly_store.get(anomaly_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="anomaly not found")
+
+    previous_status = existing.get("status", "new")
+    updated = anomaly_store.update_status(anomaly_id, new_status)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="anomaly not found")
+
+    actor = user.get("email") or user.get("sub") or "analyst"
+    details: dict[str, Any] = {
+        "previous_status": previous_status,
+        "new_status": new_status,
+    }
+    if note:
+        details["note"] = note
+
+    log_action(
+        AuditEntry(
+            anomaly_id=anomaly_id,
+            action_type=action_type,
+            actor=str(actor),
+            target=str(updated.get("asset_id") or ""),
+            decision=decision,
+            status="success",
+            details=details,
+        ),
+        user_id=user.get("sub"),
+    )
+    return updated
+
+
+@app.get("/api/v1/review/queue")
+def review_queue(
+    status: str = "new",
+    limit: int = 50,
+    offset: int = 0,
+    _user: dict = Depends(require_auth),
+):
+    """Anomalies needing human review (default status=new)."""
+    items = anomaly_store.list_items(limit=limit, offset=offset, status=status)
+    return success_response({
+        "items": items,
+        "total": len(items),
+        "limit": limit,
+        "offset": offset,
+        "status": status,
+    })
+
+
+@app.post("/api/v1/review/{anomaly_id}/approve")
+def review_approve(
+    anomaly_id: str,
+    body: ReviewNoteRequest | None = None,
+    user: dict = Depends(require_auth),
+):
+    """Human approve → anomaly status acknowledged + audit human_approved."""
+    note = body.note if body else None
+    updated = _apply_human_review(
+        anomaly_id=anomaly_id,
+        new_status="acknowledged",
+        action_type="human_approved",
+        decision="approved",
+        note=note,
+        user=user,
+    )
+    return success_response({
+        "anomaly_id": anomaly_id,
+        "status": updated.get("status"),
+        "action": "human_approved",
+    })
+
+
+@app.post("/api/v1/review/{anomaly_id}/reject")
+def review_reject(
+    anomaly_id: str,
+    body: ReviewNoteRequest | None = None,
+    user: dict = Depends(require_auth),
+):
+    """Human reject → anomaly status false_positive + audit human_rejected."""
+    note = body.note if body else None
+    updated = _apply_human_review(
+        anomaly_id=anomaly_id,
+        new_status="false_positive",
+        action_type="human_rejected",
+        decision="rejected",
+        note=note,
+        user=user,
+    )
+    return success_response({
+        "anomaly_id": anomaly_id,
+        "status": updated.get("status"),
+        "action": "human_rejected",
+    })
 
 
 # ---------------------------------------------------------------------------

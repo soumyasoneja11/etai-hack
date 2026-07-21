@@ -20,6 +20,7 @@ from ingestion_detection.baseline.builder import (
     z_score_anomaly,
 )
 from ingestion_detection.config import settings
+from ingestion_detection.correlation_forward import forward_detection_to_correlate
 from ingestion_detection.features import derive_entity_id
 from ingestion_detection.predict import ModelNotReadyError, detect_signal, predict_features_list
 from ingestion_detection.supabase_store import signal_store
@@ -201,6 +202,7 @@ def _ingest_signal(
     *,
     score: bool,
     user_payload: dict[str, Any],
+    authorization: str | None = None,
 ) -> dict[str, Any]:
     asset_id = signal.asset_id or derive_entity_id(signal.features)
     normalized = signal.model_copy(update={"asset_id": asset_id})
@@ -224,40 +226,64 @@ def _ingest_signal(
     user_id = user_payload.get("sub")
     stored = signal_store.enqueue(normalized, detection=detection, user_id=user_id)
 
+    # Align detection.signal_id with the persisted row before handoff
+    if detection is not None and detection.signal_id != stored["signal_id"]:
+        detection = detection.model_copy(update={"signal_id": stored["signal_id"]})
+
+    # Best-effort live handoff to B (does not fail ingest)
+    correlation_forward = forward_detection_to_correlate(
+        detection,
+        authorization=authorization,
+    )
+
     if settings.log_requests:
         logger.info(
-            "ingest signal_id=%s asset=%s row=%s attack=%s",
+            "ingest signal_id=%s asset=%s row=%s attack=%s forward=%s",
             stored["signal_id"],
             asset_id,
             signal.row_index,
             detection.attack if detection else "n/a",
+            correlation_forward.get("status"),
         )
 
     data = SignalIngestData(signal_id=stored["signal_id"])
     out: dict[str, Any] = success_response(data.model_dump())
     if detection:
         out["data"]["detection"] = detection.model_dump(mode="json")
+    out["data"]["correlation_forward"] = correlation_forward
     return out
 
 
 @app.post("/api/v1/signals/ingest")
 def ingest_signal(
     signal: SignalIngestRequest,
+    request: Request,
     score: bool = True,
     user: dict = Depends(require_auth),
 ):
     """CyberShield-aligned signal ingest (A internal)."""
-    return _ingest_signal(signal, score=score, user_payload=user)
+    return _ingest_signal(
+        signal,
+        score=score,
+        user_payload=user,
+        authorization=request.headers.get("Authorization"),
+    )
 
 
 @app.post("/api/v1/events/ingest")
 def ingest_event_legacy(
     event: FlowEventIn,
+    request: Request,
     score: bool = True,
     user: dict = Depends(require_auth),
 ):
     """Legacy Day 2 path — wraps FlowEventIn → SignalIngestRequest."""
-    return _ingest_signal(event.to_signal_request(), score=score, user_payload=user)
+    return _ingest_signal(
+        event.to_signal_request(),
+        score=score,
+        user_payload=user,
+        authorization=request.headers.get("Authorization"),
+    )
 
 
 @app.post("/api/v1/predict")

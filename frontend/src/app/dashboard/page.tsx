@@ -25,7 +25,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { IS_MOCK_MODE, apiGet } from "@/lib/api-client";
+import { IS_MOCK_MODE, apiGet, apiPost, ApiError } from "@/lib/api-client";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import { MetricCard } from "@/components/shared/MetricCard";
@@ -41,7 +41,7 @@ import {
   AUDIT_LOGS,
 } from "@/lib/dummy-data";
 import { SEVERITY_LEVELS } from "@/lib/constants";
-import type { AnomalyListItem } from "@/types/api";
+import type { AnomalyListItem, AnomalyListResponse, NarrativeResponse } from "@/types/api";
 import { GraphNode, GraphLink } from "../api/graph/route";
 
 // Lazy load heavy chart components
@@ -102,7 +102,7 @@ export default function DashboardPage() {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
   // Interactive Incident Response Review Queue state
-  const [incidents, setIncidents] = useState<any[]>([
+  const MOCK_INCIDENTS = [
     {
       id: "INC-904",
       title: "Isolate Outbound Gateway Feeder-101",
@@ -135,48 +135,97 @@ export default function DashboardPage() {
       impact: "Halts remote mapping probes. Mitigates enumeration scans.",
       status: "pending",
       detected_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    }
-  ]);
+    },
+  ];
 
-  // Fetch initial mock alerts & graph data
+  const [incidents, setIncidents] = useState<any[]>(IS_MOCK_MODE ? MOCK_INCIDENTS : []);
+
+  const mapQueueToIncidents = (items: AnomalyListItem[]) =>
+    (items ?? []).map((item) => ({
+      id: item.anomaly_id,
+      title: item.title,
+      severity: item.severity,
+      tactic: item.reason || "Unknown",
+      asset_id: item.asset_id,
+      reason: item.reason,
+      impact: `Review required for ${item.reason || "anomaly"} on ${item.asset_id}`,
+      status: item.status === "new" || item.status === "investigating" ? "pending" : item.status,
+      detected_at: item.detected_at,
+    }));
+
+  const refreshReviewQueue = useCallback(async () => {
+    if (IS_MOCK_MODE) return;
+    try {
+      const queue = await apiGet<{ items: AnomalyListItem[] }>("/review/queue", {
+        queryParams: { status: "new" },
+      });
+      setIncidents(mapQueueToIncidents(queue.items ?? []));
+    } catch (err) {
+      console.error("Failed to load review queue", err);
+    }
+  }, []);
+
+  // Fetch initial alerts & graph data
+  const mapAuditRows = (items: any[]) =>
+    items.map((row: any) => ({
+      id: row.audit_id ?? row.id,
+      action: row.action_type ?? row.action ?? "unknown",
+      user: row.actor ?? "system",
+      type: row.actor === "system" ? "automated" : "manual",
+      timestamp: row.created_at ?? row.timestamp ?? new Date().toISOString(),
+      details: typeof row.details === "object" ? JSON.stringify(row.details) : (row.details ?? ""),
+      status: row.status ?? "success",
+    }));
+
+  const refreshAuditLogs = useCallback(async () => {
+    if (IS_MOCK_MODE) return;
+    try {
+      const auditRes = await apiGet<{ items: any[] }>("/audit");
+      const mapped = mapAuditRows(auditRes.items ?? []);
+      setAuditLogs(mapped.length > 0 ? mapped : AUDIT_LOGS);
+    } catch {
+      // keep existing audit logs on refresh failure
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
     try {
-      const [alertsData, graphDataRes] = await Promise.all([
-        apiGet<AnomalyListItem[]>("/anomalies"),
-        apiGet<{ nodes: GraphNode[]; links: GraphLink[] }>("/graph")
+      const [anomaliesRes, graphDataRes] = await Promise.all([
+        apiGet<AnomalyListResponse>("/anomalies"),
+        apiGet<{ nodes: GraphNode[]; links: GraphLink[] }>("/graph"),
       ]);
-      setAlerts(alertsData);
+
+      if (!anomaliesRes || !Array.isArray(anomaliesRes.items)) {
+        throw new Error("Unexpected anomalies response shape (expected { items })");
+      }
+
+      setAlerts(anomaliesRes.items);
       setGraphData(graphDataRes);
-      
+
       // Fetch audit logs: from backend in real mode, dummy data in mock mode
       if (!IS_MOCK_MODE) {
         try {
           const auditRes = await apiGet<{ items: any[] }>("/audit");
-          const mapped = (auditRes.items ?? []).map((row: any) => ({
-            id: row.audit_id ?? row.id,
-            action: row.action_type ?? row.action ?? "unknown",
-            user: row.actor ?? "system",
-            type: row.actor === "system" ? "automated" : "manual",
-            timestamp: row.created_at ?? new Date().toISOString(),
-            details: typeof row.details === "object" ? JSON.stringify(row.details) : (row.details ?? ""),
-            status: row.status ?? "success",
-          }));
+          const mapped = mapAuditRows(auditRes.items ?? []);
           setAuditLogs(mapped.length > 0 ? mapped : AUDIT_LOGS);
         } catch {
           setAuditLogs(AUDIT_LOGS);
         }
+        await refreshReviewQueue();
       } else {
         setAuditLogs(prev => prev.length === 0 ? AUDIT_LOGS : prev);
       }
     } catch (err) {
       console.error("Error fetching dashboard data", err);
-      setFetchError("Unable to connect to telemetry grid");
+      setFetchError(
+        err instanceof Error ? err.message : "Unable to connect to telemetry grid",
+      );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshReviewQueue]);
 
   useEffect(() => {
     fetchData();
@@ -201,38 +250,49 @@ export default function DashboardPage() {
     setAuditLogs(prev => [newLog, ...prev]);
   };
 
-  const handleResolveIncident = (id: string, actionTaken: "approved" | "dismissed") => {
-    setIncidents(prev => prev.map(inc => {
-      if (inc.id === id) {
-        return { ...inc, status: actionTaken === "approved" ? "approved" : "dismissed" };
+  const handleResolveIncident = async (id: string, actionTaken: "approved" | "dismissed") => {
+    if (IS_MOCK_MODE) {
+      setIncidents(prev => prev.map(inc => {
+        if (inc.id === id) {
+          return { ...inc, status: actionTaken === "approved" ? "approved" : "dismissed" };
+        }
+        return inc;
+      }));
+
+      const incObj = incidents.find(i => i.id === id);
+      if (incObj) {
+        if (actionTaken === "approved") {
+          handleAddAuditLog(
+            "Incident Approved",
+            `Mitigated ${incObj.title} targeting asset ${incObj.asset_id}`,
+            "manual",
+            "success",
+          );
+          setAlerts(prev => prev.map(alert =>
+            alert.asset_id === incObj.asset_id && alert.reason === incObj.reason
+              ? { ...alert, status: "contained" }
+              : alert,
+          ));
+        } else {
+          handleAddAuditLog(
+            "Incident Dismissed",
+            `Dismissed triage alert plan for ${incObj.title} targeting asset ${incObj.asset_id}`,
+            "manual",
+            "success",
+          );
+        }
       }
-      return inc;
-    }));
-    
-    const incObj = incidents.find(i => i.id === id);
-    if (incObj) {
-      if (actionTaken === "approved") {
-        handleAddAuditLog(
-          "Incident Approved",
-          `Mitigated ${incObj.title} targeting asset ${incObj.asset_id}`,
-          "manual",
-          "success"
-        );
-        // Find matching alert in Alerts state and containment status to contained
-        setAlerts(prev => prev.map(alert => 
-          alert.asset_id === incObj.asset_id && alert.reason === incObj.reason
-            ? { ...alert, status: "contained" }
-            : alert
-        ));
-      } else {
-        handleAddAuditLog(
-          "Incident Dismissed",
-          `Dismissed triage alert plan for ${incObj.title} targeting asset ${incObj.asset_id}`,
-          "manual",
-          "success"
-        );
-      }
+      return;
     }
+
+    const path =
+      actionTaken === "approved"
+        ? `/review/${encodeURIComponent(id)}/approve`
+        : `/review/${encodeURIComponent(id)}/reject`;
+
+    await apiPost(path, {});
+    await fetchData();
+    await refreshAuditLogs();
   };
 
   return (
@@ -254,6 +314,7 @@ export default function DashboardPage() {
               alerts={alerts} 
               onUpdateAlertStatus={handleUpdateAlertStatus}
               onAddAuditLog={handleAddAuditLog}
+              onRefreshAudit={refreshAuditLogs}
               loading={loading}
               error={fetchError}
               onRetry={fetchData}
@@ -530,51 +591,105 @@ interface AlertsQueueScreenProps {
   alerts: AnomalyListItem[];
   onUpdateAlertStatus: (anomalyId: string, status: AnomalyListItem["status"]) => void;
   onAddAuditLog: (action: string, details: string, type?: "automated" | "manual", status?: "success" | "failed") => void;
+  onRefreshAudit?: () => Promise<void>;
   loading?: boolean;
   error?: string | null;
   onRetry?: () => void;
 }
 
-function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, loading, error, onRetry }: AlertsQueueScreenProps) {
+function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, onRefreshAudit, loading, error, onRetry }: AlertsQueueScreenProps) {
   const [search, setSearch] = useState("");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedAlert, setSelectedAlert] = useState<AnomalyListItem | null>(null);
 
   // Tab State for Alert detail panel
-  const [detailTab, setDetailTab] = useState<"info" | "intel">("info");
+  const [detailTab, setDetailTab] = useState<"info" | "intel" | "narrative">("info");
   const [threatIntel, setThreatIntel] = useState<any>(null);
   const [loadingIntel, setLoadingIntel] = useState(false);
+  const [narrative, setNarrative] = useState<NarrativeResponse | null>(null);
+  const [loadingNarrative, setLoadingNarrative] = useState(false);
+  const [generatingNarrative, setGeneratingNarrative] = useState(false);
 
   // Mitigation States
   const [showMitigateModal, setShowMitigateModal] = useState(false);
   const [mitigationType, setMitigationType] = useState("isolate");
   const [mitigationStatus, setMitigationStatus] = useState<"idle" | "running" | "success">("idle");
 
-  // Load threat intelligence documents when selected alert changes
+  // Load threat intelligence + persisted narrative when selected alert changes
   useEffect(() => {
     if (!selectedAlert) {
       setThreatIntel(null);
+      setNarrative(null);
       return;
     }
 
     const fetchIntel = async () => {
       setLoadingIntel(true);
       try {
-        const res = await fetch(`/api/threat-intel?attack_label=${selectedAlert.reason}`);
-        const json = await res.json();
-        if (json.success) {
-          setThreatIntel(json.data);
-        }
+        const label = encodeURIComponent(selectedAlert.reason);
+        const data = await apiGet<any>(`/threat-intel/${label}`);
+        setThreatIntel(data);
       } catch (err) {
         console.error("Error fetching threat intel", err);
+        setThreatIntel(null);
       } finally {
         setLoadingIntel(false);
       }
     };
+
+    const fetchNarrative = async () => {
+      if (IS_MOCK_MODE) {
+        setNarrative(null);
+        return;
+      }
+      setLoadingNarrative(true);
+      try {
+        const data = await apiGet<NarrativeResponse>(
+          `/narrative/${encodeURIComponent(selectedAlert.anomaly_id)}`,
+        );
+        setNarrative(data);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          setNarrative(null);
+        } else {
+          console.error("Error fetching narrative", err);
+          setNarrative(null);
+        }
+      } finally {
+        setLoadingNarrative(false);
+      }
+    };
+
     fetchIntel();
-    setDetailTab("info"); // Reset detail tab on change
+    fetchNarrative();
+    setDetailTab("info");
   }, [selectedAlert]);
+
+  const handleGenerateNarrative = async () => {
+    if (!selectedAlert || generatingNarrative) return;
+    if (IS_MOCK_MODE) {
+      setNarrative({
+        anomaly_id: selectedAlert.anomaly_id,
+        narrative: `Mock analyst narrative for ${selectedAlert.reason} on ${selectedAlert.asset_id}. Template-only (mock mode).`,
+        sources: ["mock"],
+        generated_at: new Date().toISOString(),
+      });
+      return;
+    }
+    setGeneratingNarrative(true);
+    try {
+      const data = await apiPost<NarrativeResponse>("/narrative", {
+        anomaly_id: selectedAlert.anomaly_id,
+      });
+      setNarrative(data);
+      toast.success("Narrative generated and saved.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Narrative generation failed");
+    } finally {
+      setGeneratingNarrative(false);
+    }
+  };
 
   const filteredAlerts = alerts.filter((alert) => {
     const matchesSearch =
@@ -780,6 +895,14 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, loading
                   >
                     Threat Intel ({threatIntel ? threatIntel.total : 0})
                   </button>
+                  <button
+                    onClick={() => setDetailTab("narrative")}
+                    className={`text-[11px] font-bold uppercase tracking-wider pb-1 border-b-2 transition-colors ${
+                      detailTab === "narrative" ? "border-primary text-primary" : "border-transparent text-muted-foreground/60 hover:text-foreground"
+                    }`}
+                  >
+                    Narrative{narrative ? " *" : ""}
+                  </button>
                 </div>
 
                 {/* Sub Tab Content */}
@@ -940,6 +1063,58 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, loading
                     )}
                   </div>
                 )}
+
+                {detailTab === "narrative" && (
+                  <div className="space-y-3 max-h-[290px] overflow-y-auto pr-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[9px] uppercase font-bold text-primary tracking-wider">
+                        Analyst Narrative
+                      </span>
+                      <button
+                        onClick={handleGenerateNarrative}
+                        disabled={generatingNarrative}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-white/[0.02] hover:bg-white/[0.05] text-[10px] font-semibold transition-colors disabled:opacity-60"
+                      >
+                        {(generatingNarrative || loadingNarrative) && (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        )}
+                        {narrative ? "Regenerate" : "Generate Narrative"}
+                      </button>
+                    </div>
+                    {loadingNarrative ? (
+                      <div className="flex flex-col items-center justify-center py-10 text-muted-foreground space-y-2">
+                        <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                        <span className="text-xs">Loading persisted narrative...</span>
+                      </div>
+                    ) : narrative?.narrative ? (
+                      <div className="p-3 rounded-xl border border-border bg-white/[0.01] space-y-2 text-xs">
+                        <p className="text-[12px] text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                          {narrative.narrative}
+                        </p>
+                        <div className="border-t border-border/30 pt-2 flex flex-wrap gap-2 text-[10px] text-muted-foreground">
+                          {narrative.generated_at && (
+                            <span>
+                              Generated: {new Date(narrative.generated_at).toLocaleString()}
+                            </span>
+                          )}
+                          {narrative.sources?.length > 0 && (
+                            <span className="font-mono">
+                              Sources: {narrative.sources.slice(0, 4).join(", ")}
+                              {narrative.sources.length > 4 ? "..." : ""}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-10 text-xs text-muted-foreground space-y-2">
+                        <p className="italic">No narrative saved for this anomaly yet.</p>
+                        <p className="text-[10px]">
+                          Generate once — it persists on B and reloads from GET /narrative.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Simulation/Mitigation actions */}
@@ -1034,8 +1209,10 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, loading
 
                   <button
                     onClick={async () => {
+                      if (!selectedAlert) return;
                       setMitigationStatus("running");
-                      setTimeout(() => {
+
+                      const finishSuccess = async () => {
                         setMitigationStatus("success");
                         onUpdateAlertStatus(selectedAlert.anomaly_id, "contained");
                         onAddAuditLog(
@@ -1045,7 +1222,44 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, loading
                           "success"
                         );
                         selectedAlert.status = "contained";
-                      }, 1800);
+                        await onRefreshAudit?.();
+                      };
+
+                      if (IS_MOCK_MODE) {
+                        setTimeout(() => {
+                          void finishSuccess();
+                        }, 1800);
+                        return;
+                      }
+
+                      try {
+                        const path =
+                          mitigationType === "block"
+                            ? "/soar/block"
+                            : mitigationType === "revoke"
+                              ? "/soar/revoke"
+                              : "/soar/isolate";
+
+                        const body =
+                          mitigationType === "block"
+                            ? {
+                                anomaly_id: selectedAlert.anomaly_id,
+                                ip_address: selectedAlert.asset_id,
+                              }
+                            : {
+                                anomaly_id: selectedAlert.anomaly_id,
+                                asset_id: selectedAlert.asset_id,
+                              };
+
+                        await apiPost(path, body);
+                        await finishSuccess();
+                      } catch (err) {
+                        console.error("SOAR mitigation failed", err);
+                        setMitigationStatus("idle");
+                        toast.error(
+                          err instanceof Error ? err.message : "SOAR playbook failed",
+                        );
+                      }
                     }}
                     className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl text-xs font-bold hover:bg-primary/95 transition-all shadow-[0_4px_12px_rgba(234,88,12,0.15)]"
                   >
@@ -1059,7 +1273,7 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, loading
                   <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
                   <div className="text-center space-y-1">
                     <p className="text-xs font-bold text-foreground">Executing SOAR Playbook...</p>
-                    <p className="text-[10px] text-muted-foreground font-mono">POST /api/v1/playbook/run ({mitigationType})</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">POST /api/v1/soar/{mitigationType}</p>
                   </div>
                 </div>
               )}
@@ -1382,7 +1596,7 @@ function DigitalTwinScreen() {
 // ==========================================
 interface IncidentResponseScreenProps {
   incidents: any[];
-  onResolveIncident: (id: string, actionTaken: "approved" | "dismissed") => void;
+  onResolveIncident: (id: string, actionTaken: "approved" | "dismissed") => void | Promise<void>;
 }
 
 function IncidentResponseScreen({ incidents, onResolveIncident }: IncidentResponseScreenProps) {
@@ -1392,8 +1606,7 @@ function IncidentResponseScreen({ incidents, onResolveIncident }: IncidentRespon
     if (processingAction) return;
     setProcessingAction({ id, action });
     try {
-      await new Promise(r => setTimeout(r, 1000));
-      onResolveIncident(id, action);
+      await onResolveIncident(id, action);
       if (action === "approved") {
         toast.success("Mitigation authorized successfully.");
       } else {

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { SIDEBAR_SECTIONS, PLATFORM } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { clearToken } from "@/lib/api-client";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface SidebarProps {
@@ -204,9 +205,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger render={
-                <button className="flex w-full items-center justify-center rounded-xl p-2 text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors">
+                <Link
+                  href="/auth/login"
+                  onClick={() => clearToken()}
+                  className="flex w-full items-center justify-center rounded-xl p-2 text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors"
+                >
                   <LogOut className="h-4 w-4" />
-                </button>
+                </Link>
               } />
               <TooltipContent side="right" className="text-xs">Logout</TooltipContent>
             </Tooltip>
@@ -223,7 +228,11 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   <p className="text-[10px] text-muted-foreground truncate">admin@cybershield.gov.in</p>
                 </div>
               </Link>
-              <Link href="/auth/login" className="p-1 text-muted-foreground hover:text-foreground transition-colors shrink-0">
+              <Link
+                href="/auth/login"
+                onClick={() => clearToken()}
+                className="p-1 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              >
                 <LogOut className="h-3.5 w-3.5" />
               </Link>
             </div>

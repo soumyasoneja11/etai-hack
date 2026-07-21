@@ -10,28 +10,28 @@
         "phase": "attack",
         "row_range": [
           1463,
-          286467
+          1663
         ],
         "attack_start_row": 1463,
-        "n_rows": 285004,
+        "n_rows": 200,
         "description": "Friday afternoon PortScan \u2014 primary demo. B maps stages to ATT&CK (e.g. T1046 Network Service Discovery, T1595 Active Scanning)."
       },
       "metrics": {
-        "accuracy": 0.9985965109261624,
-        "precision_macro": 0.3333267034756366,
-        "recall_macro": 0.33280864279160954,
-        "f1_macro": 0.33306729367220206,
-        "n_rows": 285004,
-        "n_true_attack": 158930,
-        "n_true_benign": 126074,
-        "detection_rate_on_true_attacks": 0.9999685396086327,
-        "false_positive_rate_on_true_benign": 0.003053762076240938,
+        "accuracy": 0.965,
+        "precision_macro": 0.6631578947368421,
+        "recall_macro": 0.5627929928448063,
+        "f1_macro": 0.6050188569770816,
+        "n_rows": 200,
+        "n_true_attack": 7,
+        "n_true_benign": 193,
+        "detection_rate_on_true_attacks": 0.7142857142857143,
+        "false_positive_rate_on_true_benign": 0.025906735751295335,
         "classification_report": {
           "BENIGN": {
-            "precision": 0.9999602208538196,
-            "recall": 0.996946237923759,
-            "f1-score": 0.9984509548473197,
-            "support": 126074.0
+            "precision": 0.9894736842105263,
+            "recall": 0.9740932642487047,
+            "f1-score": 0.9817232375979112,
+            "support": 193.0
           },
           "Bot": {
             "precision": 0.0,
@@ -39,388 +39,49 @@
             "f1-score": 0.0,
             "support": 0.0
           },
-          "DoS Hulk": {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1-score": 0.0,
-            "support": 0.0
-          },
-          "DoS Slowhttptest": {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1-score": 0.0,
-            "support": 0.0
-          },
-          "DoS slowloris": {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1-score": 0.0,
-            "support": 0.0
-          },
           "PortScan": {
             "precision": 1.0,
-            "recall": 0.9999056188258982,
-            "f1-score": 0.9999528071858925,
-            "support": 158930.0
+            "recall": 0.7142857142857143,
+            "f1-score": 0.8333333333333334,
+            "support": 7.0
           },
-          "accuracy": 0.9985965109261624,
+          "accuracy": 0.965,
           "macro avg": {
-            "precision": 0.3333267034756366,
-            "recall": 0.33280864279160954,
-            "f1-score": 0.33306729367220206,
-            "support": 285004.0
+            "precision": 0.6631578947368421,
+            "recall": 0.5627929928448063,
+            "f1-score": 0.6050188569770816,
+            "support": 200.0
           },
           "weighted avg": {
-            "precision": 0.99998240334846,
-            "recall": 0.9985965109261624,
-            "f1-score": 0.9992884497321962,
-            "support": 285004.0
+            "precision": 0.989842105263158,
+            "recall": 0.965,
+            "f1-score": 0.9765295909486511,
+            "support": 200.0
           }
         },
         "label_counts_true": {
-          "BENIGN": 126074,
-          "PortScan": 158930
+          "BENIGN": 193,
+          "PortScan": 7
         },
         "label_counts_pred": {
-          "BENIGN": 125694,
-          "Bot": 374,
-          "DoS Hulk": 16,
-          "DoS Slowhttptest": 4,
-          "DoS slowloris": 1,
-          "PortScan": 158915
+          "BENIGN": 190,
+          "Bot": 5,
+          "PortScan": 5
         },
-        "binary_attack_f1": 0.9987745098039216,
-        "binary_attack_precision": 0.9975833281024418,
-        "binary_attack_recall": 0.9999685396086327,
         "severity_on_true_attack_rows_using_pred_label": {
-          "low": 5,
-          "medium": 3,
-          "high": 2,
-          "critical": 158920
+          "low": 2,
+          "medium": 0,
+          "high": 0,
+          "critical": 5
         }
       },
       "artifacts": {
         "confusion_matrix_png": "reports\\metrics\\harness_confusion_scenario_portscan.png"
       },
-      "deck_line": "portscan: accuracy=99.86%, macro-F1=33.31%, binary-attack-F1=99.88%, attack detection rate=100.00%"
-    },
-    {
-      "meta": {
-        "source": "scenario",
-        "scenario": "ddos",
-        "csv_file": "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv",
-        "phase": "attack",
-        "row_range": [
-          18883,
-          225745
-        ],
-        "attack_start_row": 18883,
-        "n_rows": 206862,
-        "description": "Friday afternoon DDoS \u2014 backup scenario."
-      },
-      "metrics": {
-        "accuracy": 0.9997437905463545,
-        "precision_macro": 0.3999771573604061,
-        "recall_macro": 0.39987431491865444,
-        "f1_macro": 0.39992572603611426,
-        "n_rows": 206862,
-        "n_true_attack": 128027,
-        "n_true_benign": 78835,
-        "detection_rate_on_true_attacks": 0.999929702328415,
-        "false_positive_rate_on_true_benign": 0.0005581277351430202,
-        "classification_report": {
-          "BENIGN": {
-            "precision": 0.9998857868020304,
-            "recall": 0.999441872264857,
-            "f1-score": 0.9996637802518477,
-            "support": 78835.0
-          },
-          "Bot": {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1-score": 0.0,
-            "support": 0.0
-          },
-          "DDoS": {
-            "precision": 1.0,
-            "recall": 0.999929702328415,
-            "f1-score": 0.9999648499287235,
-            "support": 128027.0
-          },
-          "DoS Hulk": {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1-score": 0.0,
-            "support": 0.0
-          },
-          "DoS Slowhttptest": {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1-score": 0.0,
-            "support": 0.0
-          },
-          "accuracy": 0.9997437905463545,
-          "macro avg": {
-            "precision": 0.3999771573604061,
-            "recall": 0.39987431491865444,
-            "f1-score": 0.39992572603611426,
-            "support": 206862.0
-          },
-          "weighted avg": {
-            "precision": 0.9999564734099935,
-            "recall": 0.9997437905463545,
-            "f1-score": 0.9998501124323418,
-            "support": 206862.0
-          }
-        },
-        "label_counts_true": {
-          "BENIGN": 78835,
-          "DDoS": 128027
-        },
-        "label_counts_pred": {
-          "BENIGN": 78800,
-          "Bot": 35,
-          "DDoS": 128018,
-          "DoS Hulk": 3,
-          "DoS Slowhttptest": 6
-        },
-        "binary_attack_f1": 0.9997930407006939,
-        "binary_attack_precision": 0.999656416423295,
-        "binary_attack_recall": 0.999929702328415,
-        "severity_on_true_attack_rows_using_pred_label": {
-          "low": 9,
-          "medium": 0,
-          "high": 1,
-          "critical": 128017
-        }
-      },
-      "artifacts": {
-        "confusion_matrix_png": "reports\\metrics\\harness_confusion_scenario_ddos.png"
-      },
-      "deck_line": "ddos: accuracy=99.97%, macro-F1=39.99%, binary-attack-F1=99.98%, attack detection rate=99.99%"
-    },
-    {
-      "meta": {
-        "source": "scenario",
-        "scenario": "bot",
-        "csv_file": "Friday-WorkingHours-Morning.pcap_ISCX.csv",
-        "phase": "attack",
-        "row_range": [
-          24072,
-          191033
-        ],
-        "attack_start_row": 24072,
-        "n_rows": 166961,
-        "description": "Friday morning Bot traffic \u2014 backup scenario."
-      },
-      "metrics": {
-        "accuracy": 0.9997604230928181,
-        "precision_macro": 0.3995541164215742,
-        "recall_macro": 0.3971370309103667,
-        "f1_macro": 0.39833809169103473,
-        "n_rows": 166961,
-        "n_true_attack": 1966,
-        "n_true_benign": 164995,
-        "detection_rate_on_true_attacks": 0.9857578840284842,
-        "false_positive_rate_on_true_benign": 7.27294766508076e-05,
-        "classification_report": {
-          "BENIGN": {
-            "precision": 0.9998303143426802,
-            "recall": 0.9999272705233492,
-            "f1-score": 0.9998787900826046,
-            "support": 164995.0
-          },
-          "Bot": {
-            "precision": 0.9979402677651905,
-            "recall": 0.9857578840284842,
-            "f1-score": 0.9918116683725691,
-            "support": 1966.0
-          },
-          "DDoS": {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1-score": 0.0,
-            "support": 0.0
-          },
-          "DoS Hulk": {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1-score": 0.0,
-            "support": 0.0
-          },
-          "PortScan": {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1-score": 0.0,
-            "support": 0.0
-          },
-          "accuracy": 0.9997604230928181,
-          "macro avg": {
-            "precision": 0.3995541164215742,
-            "recall": 0.3971370309103667,
-            "f1-score": 0.39833809169103473,
-            "support": 166961.0
-          },
-          "weighted avg": {
-            "precision": 0.9998080586567935,
-            "recall": 0.9997604230928181,
-            "f1-score": 0.9997837980708059,
-            "support": 166961.0
-          }
-        },
-        "label_counts_true": {
-          "BENIGN": 164995,
-          "Bot": 1966
-        },
-        "label_counts_pred": {
-          "BENIGN": 165011,
-          "Bot": 1942,
-          "DDoS": 1,
-          "DoS Hulk": 6,
-          "PortScan": 1
-        },
-        "binary_attack_f1": 0.9897854954034729,
-        "binary_attack_precision": 0.9938461538461538,
-        "binary_attack_recall": 0.9857578840284842,
-        "severity_on_true_attack_rows_using_pred_label": {
-          "low": 28,
-          "medium": 6,
-          "high": 5,
-          "critical": 1927
-        }
-      },
-      "artifacts": {
-        "confusion_matrix_png": "reports\\metrics\\harness_confusion_scenario_bot.png"
-      },
-      "deck_line": "bot: accuracy=99.98%, macro-F1=39.83%, binary-attack-F1=98.98%, attack detection rate=98.58%"
-    },
-    {
-      "meta": {
-        "source": "processed_test",
-        "path": "data\\processed\\X_test.parquet",
-        "n_rows": 246433
-      },
-      "metrics": {
-        "accuracy": 0.9990301623565025,
-        "precision_macro": 0.9685554911349803,
-        "recall_macro": 0.9902732819402087,
-        "f1_macro": 0.9781160693772547,
-        "n_rows": 246433,
-        "n_true_attack": 82909,
-        "n_true_benign": 163524,
-        "detection_rate_on_true_attacks": 0.9993486834963635,
-        "false_positive_rate_on_true_benign": 0.0009539884053716886,
-        "classification_report": {
-          "BENIGN": {
-            "precision": 0.9996695671329442,
-            "recall": 0.9990460115946284,
-            "f1-score": 0.9993576920959425,
-            "support": 163524.0
-          },
-          "Bot": {
-            "precision": 0.7313131313131314,
-            "recall": 0.9282051282051282,
-            "f1-score": 0.8180790960451978,
-            "support": 390.0
-          },
-          "DDoS": {
-            "precision": 1.0,
-            "recall": 0.9997656524626021,
-            "f1-score": 0.9998828125,
-            "support": 25603.0
-          },
-          "DoS GoldenEye": {
-            "precision": 0.9956395348837209,
-            "recall": 0.9990277102576568,
-            "f1-score": 0.9973307449648143,
-            "support": 2057.0
-          },
-          "DoS Hulk": {
-            "precision": 0.999190236566603,
-            "recall": 0.9994214636968469,
-            "f1-score": 0.9993058367559438,
-            "support": 34570.0
-          },
-          "DoS Slowhttptest": {
-            "precision": 0.9961685823754789,
-            "recall": 0.994263862332696,
-            "f1-score": 0.9952153110047847,
-            "support": 1046.0
-          },
-          "DoS slowloris": {
-            "precision": 0.9953488372093023,
-            "recall": 0.9935004642525533,
-            "f1-score": 0.9944237918215614,
-            "support": 1077.0
-          },
-          "Heartbleed": {
-            "precision": 1.0,
-            "recall": 1.0,
-            "f1-score": 1.0,
-            "support": 2.0
-          },
-          "PortScan": {
-            "precision": 0.9996695307336417,
-            "recall": 0.9992292446597666,
-            "f1-score": 0.9994493392070485,
-            "support": 18164.0
-          },
-          "accuracy": 0.9990301623565025,
-          "macro avg": {
-            "precision": 0.9685554911349803,
-            "recall": 0.9902732819402087,
-            "f1-score": 0.9781160693772547,
-            "support": 246433.0
-          },
-          "weighted avg": {
-            "precision": 0.9991445780780497,
-            "recall": 0.9990301623565025,
-            "f1-score": 0.9990687825644183,
-            "support": 246433.0
-          }
-        },
-        "label_counts_true": {
-          "BENIGN": 163524,
-          "Bot": 390,
-          "DDoS": 25603,
-          "DoS GoldenEye": 2057,
-          "DoS Hulk": 34570,
-          "DoS Slowhttptest": 1046,
-          "DoS slowloris": 1077,
-          "Heartbleed": 2,
-          "PortScan": 18164
-        },
-        "label_counts_pred": {
-          "BENIGN": 163422,
-          "Bot": 495,
-          "DDoS": 25597,
-          "DoS GoldenEye": 2064,
-          "DoS Hulk": 34578,
-          "DoS Slowhttptest": 1044,
-          "DoS slowloris": 1075,
-          "Heartbleed": 2,
-          "PortScan": 18156
-        },
-        "binary_attack_f1": 0.9987343297974928,
-        "binary_attack_precision": 0.9981207309874595,
-        "binary_attack_recall": 0.9993486834963635,
-        "severity_on_true_attack_rows_using_pred_label": {
-          "low": 55,
-          "medium": 17,
-          "high": 27,
-          "critical": 82810
-        }
-      },
-      "artifacts": {
-        "confusion_matrix_png": "reports\\metrics\\harness_confusion_test.png"
-      },
-      "deck_line": "processed_test: accuracy=99.90%, macro-F1=97.81%, binary-attack-F1=99.87%, attack detection rate=99.93%"
+      "deck_line": "portscan: accuracy=96.50%, macro-F1=60.50%, attack detection rate=71.43%"
     }
   ],
   "deck_lines": [
-    "portscan: accuracy=99.86%, macro-F1=33.31%, binary-attack-F1=99.88%, attack detection rate=100.00%",
-    "ddos: accuracy=99.97%, macro-F1=39.99%, binary-attack-F1=99.98%, attack detection rate=99.99%",
-    "bot: accuracy=99.98%, macro-F1=39.83%, binary-attack-F1=98.98%, attack detection rate=98.58%",
-    "processed_test: accuracy=99.90%, macro-F1=97.81%, binary-attack-F1=99.87%, attack detection rate=99.93%"
+    "portscan: accuracy=96.50%, macro-F1=60.50%, attack detection rate=71.43%"
   ]
 }

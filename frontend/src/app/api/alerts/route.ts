@@ -162,7 +162,12 @@ export async function GET(request: Request) {
     
     return NextResponse.json({
       success: true,
-      data: filtered,
+      data: {
+        items: filtered,
+        total: MOCK_ALERTS.length,
+        limit: limit ?? MOCK_ALERTS.length,
+        offset,
+      },
       error: null,
       meta: {
         timestamp: new Date().toISOString(),

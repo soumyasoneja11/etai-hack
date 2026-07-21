@@ -19,6 +19,7 @@ import {
 import { useRouter } from "next/navigation";
 import { NOTIFICATIONS } from "@/lib/dummy-data";
 import { cn } from "@/lib/utils";
+import { clearToken } from "@/lib/api-client";
 
 interface TopNavbarProps {
   sidebarCollapsed: boolean;
@@ -247,6 +248,7 @@ export function TopNavbar({ sidebarCollapsed, onToggleSidebar }: TopNavbarProps)
                 </button>
                 <button 
                   onClick={() => {
+                    clearToken();
                     router.push("/auth/login");
                     setShowProfile(false);
                   }}
