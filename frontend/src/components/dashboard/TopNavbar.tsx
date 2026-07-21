@@ -3,10 +3,8 @@
 import { useState, useEffect } from "react";
 import {
   Search,
-  Bell,
   PanelLeftClose,
   Clock,
-  AlertTriangle,
   User,
   Settings,
   LogOut,
@@ -14,8 +12,6 @@ import {
   Moon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { NOTIFICATIONS } from "@/lib/dummy-data";
-import { cn } from "@/lib/utils";
 import { clearToken } from "@/lib/api-client";
 
 interface TopNavbarProps {
@@ -26,17 +22,14 @@ interface TopNavbarProps {
 export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
   const router = useRouter();
   const [currentTime, setCurrentTime] = useState("");
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [theme, setTheme] = useState("light");
-  const unreadCount = NOTIFICATIONS.filter((n) => !n.read).length;
 
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (!target.closest(".notifications-container") && !target.closest(".profile-container")) {
-        setShowNotifications(false);
+      if (!target.closest(".profile-container")) {
         setShowProfile(false);
       }
     };
@@ -45,7 +38,6 @@ export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
   }, []);
 
   const toggleTheme = () => {
-    setShowNotifications(false);
     setShowProfile(false);
     const newTheme = theme === "dark" ? "light" : "dark";
     if (newTheme === "dark") {
@@ -76,8 +68,6 @@ export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
     setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
   }, []);
 
-
-
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-sidebar px-4 lg:px-6">
       {/* Left: Organization Name & Platform Info */}
@@ -98,7 +88,7 @@ export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
         </div>
       </div>
 
-      {/* Right: Search + Status + Time + Notifications + Profile */}
+      {/* Right: Search + Time + Theme + Profile */}
       <div className="flex items-center gap-3">
         {/* Global Search */}
         <button className="hidden md:flex items-center gap-2 rounded-xl border border-border bg-background/30 px-3 py-1.5 text-xs text-muted-foreground hover:bg-white/[0.04] transition-colors">
@@ -108,12 +98,6 @@ export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
             ⌘K
           </kbd>
         </button>
-
-        {/* Current Threat Level */}
-        <div className="flex items-center gap-2 rounded-full border border-cyber-warning/20 bg-cyber-warning/5 px-3 py-1.5 text-[11px] font-semibold text-cyber-warning uppercase tracking-wider">
-          <div className="h-1.5 w-1.5 rounded-full bg-cyber-warning animate-pulse" />
-          <span>Threat Level: Elevated</span>
-        </div>
 
         {/* Time */}
         <div className="hidden lg:flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -130,77 +114,10 @@ export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
           {theme === "dark" ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
         </button>
 
-        {/* Notifications */}
-        <div className="relative notifications-container">
-          <button
-            onClick={() => {
-              setShowNotifications(!showNotifications);
-              setShowProfile(false);
-            }}
-            className="relative p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors"
-          >
-            <Bell className="h-4 w-4" />
-            {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-cyber-danger text-[9px] font-bold text-white">
-                {unreadCount}
-              </span>
-            )}
-          </button>
-
-          {/* Notifications Dropdown */}
-          {showNotifications && (
-            <div className="absolute right-0 top-12 w-80 rounded-[18px] border border-border bg-card shadow-2xl shadow-black/40 z-50 overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-                <h3 className="text-sm font-semibold">Notifications</h3>
-                <span className="text-[10px] text-primary font-medium">
-                  {unreadCount} new
-                </span>
-              </div>
-              <div className="max-h-[320px] overflow-y-auto">
-                {NOTIFICATIONS.map((notif) => (
-                  <div
-                    key={notif.id}
-                    className={cn(
-                      "flex gap-3 px-4 py-3 border-b border-border last:border-0 hover:bg-white/[0.02] transition-colors",
-                      !notif.read && "bg-primary/[0.02]"
-                    )}
-                  >
-                    <div className={cn(
-                      "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
-                      notif.severity === "critical" && "bg-cyber-danger/10 text-cyber-danger",
-                      notif.severity === "warning" && "bg-cyber-warning/10 text-cyber-warning",
-                      notif.severity === "success" && "bg-primary/10 text-primary",
-                      notif.severity === "info" && "bg-cyber-info/10 text-cyber-info"
-                    )}>
-                      <AlertTriangle className="h-3 w-3" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{notif.title}</p>
-                      <p className="text-[11px] text-muted-foreground line-clamp-2">{notif.message}</p>
-                      <p className="text-[10px] text-muted-foreground/50 mt-1">{notif.time}</p>
-                    </div>
-                    {!notif.read && (
-                      <div className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="px-4 py-2.5 border-t border-border">
-                <button className="w-full text-center text-xs text-primary hover:text-primary/80 transition-colors">
-                  View all notifications
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* Profile */}
         <div className="relative profile-container">
           <button
-            onClick={() => {
-              setShowProfile(!showProfile);
-              setShowNotifications(false);
-            }}
+            onClick={() => setShowProfile(!showProfile)}
             className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-white/[0.04] transition-colors"
           >
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 border border-primary/20">
@@ -210,22 +127,8 @@ export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
 
           {showProfile && (
             <div className="absolute right-0 top-12 w-56 rounded-[18px] border border-border bg-card shadow-2xl shadow-black/40 z-50 overflow-hidden">
-              <div className="px-4 py-3 border-b border-border">
-                <p className="text-sm font-medium">Security Analyst</p>
-                <p className="text-xs text-muted-foreground">admin@cybershield.gov.in</p>
-              </div>
               <div className="py-1">
-                <button 
-                  onClick={() => {
-                    router.push("/dashboard?tab=settings");
-                    setShowProfile(false);
-                  }}
-                  className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors"
-                >
-                  <User className="h-3.5 w-3.5" />
-                  Profile
-                </button>
-                <button 
+                <button
                   onClick={() => {
                     router.push("/dashboard?tab=settings");
                     setShowProfile(false);
@@ -233,9 +136,9 @@ export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
                   className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors"
                 >
                   <Settings className="h-3.5 w-3.5" />
-                  Settings
+                  Profile &amp; Settings
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     clearToken();
                     router.push("/auth/login");

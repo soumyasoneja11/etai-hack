@@ -12,6 +12,7 @@ import {
   User,
   Loader2,
   RefreshCw,
+  ScrollText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { IS_MOCK_MODE, apiGet, apiPost, ApiError, getToken } from "@/lib/api-client";
@@ -175,6 +176,7 @@ export default function DashboardPage() {
 
   // Dynamic Audit Logs state so we can add logs in real-time
   const [auditLogs, setAuditLogs] = useState<UIAuditLog[]>([]);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   // Interactive Incident Response Review Queue state
   const [incidents, setIncidents] = useState<Incident[]>(IS_MOCK_MODE ? MOCK_INCIDENTS : []);
@@ -220,10 +222,11 @@ export default function DashboardPage() {
     if (IS_MOCK_MODE) return;
     try {
       const auditRes = await apiGet<{ items: RawAuditLog[] }>("/audit");
-      const mapped = mapAuditRows(auditRes.items ?? []);
-      setAuditLogs(mapped.length > 0 ? mapped : AUDIT_LOGS);
-    } catch {
-      // keep existing audit logs on refresh failure
+      // An empty real result is a valid state, not a reason to show dummy data.
+      setAuditLogs(mapAuditRows(auditRes.items ?? []));
+      setAuditError(null);
+    } catch (err) {
+      setAuditError(err instanceof Error ? err.message : "Failed to load audit log");
     }
   }, []);
 
@@ -241,16 +244,27 @@ export default function DashboardPage() {
       }
 
       setAlerts(anomaliesRes.items);
-      setGraphData((graphDataRes.nodes?.length ?? 0) > 0 ? graphDataRes : FALLBACK_GRAPH_DATA);
 
-      // Fetch audit logs: from backend in real mode, dummy data in mock mode
+      const hasGraph = (graphDataRes.nodes?.length ?? 0) > 0;
+      if (hasGraph) {
+        setGraphData(graphDataRes);
+      } else {
+        // Real mode: an empty graph is a real state → show empty, not fake data.
+        // Mock mode (dev): keep the illustrative fallback graph.
+        setGraphData(IS_MOCK_MODE ? FALLBACK_GRAPH_DATA : { nodes: [], links: [] });
+      }
+
+      // Fetch audit logs from the backend in real mode; illustrative data in mock mode.
       if (!IS_MOCK_MODE) {
         try {
           const auditRes = await apiGet<{ items: RawAuditLog[] }>("/audit");
-          const mapped = mapAuditRows(auditRes.items ?? []);
-          setAuditLogs(mapped.length > 0 ? mapped : AUDIT_LOGS);
-        } catch {
-          setAuditLogs(AUDIT_LOGS);
+          setAuditLogs(mapAuditRows(auditRes.items ?? []));
+          setAuditError(null);
+        } catch (auditErr) {
+          setAuditLogs([]);
+          setAuditError(
+            auditErr instanceof Error ? auditErr.message : "Failed to load audit log",
+          );
         }
         await refreshReviewQueue();
       } else {
@@ -258,7 +272,8 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("Error fetching dashboard data", err);
-      setGraphData(FALLBACK_GRAPH_DATA);
+      // Don't substitute fabricated topology on a failed request — surface the error.
+      setGraphData(IS_MOCK_MODE ? FALLBACK_GRAPH_DATA : null);
       setFetchError(
         err instanceof Error ? err.message : "Unable to connect to telemetry grid",
       );
@@ -368,6 +383,8 @@ export default function DashboardPage() {
               alerts={alerts}
               graphData={graphData}
               loading={loading}
+              error={fetchError}
+              onRetry={fetchData}
               selectedNode={selectedNode}
               onSelectNode={setSelectedNode}
             />
@@ -387,6 +404,9 @@ export default function DashboardPage() {
           {activeTab === "audit" && (
             <AuditLogsScreen 
               logs={auditLogs}
+              error={auditError}
+              loading={loading}
+              onRetry={refreshAuditLogs}
             />
           )}
 
@@ -1426,15 +1446,20 @@ function LiveMonitoringScreen({
   alerts,
   graphData,
   loading,
+  error,
+  onRetry,
   selectedNode,
   onSelectNode,
 }: {
   alerts: AnomalyListItem[];
   graphData: { nodes: GraphNode[]; links: GraphLink[] } | null;
   loading: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   selectedNode: GraphNode | null;
   onSelectNode: (node: GraphNode | null) => void;
 }) {
+  const hasGraph = !!graphData && graphData.nodes.length > 0;
   return (
     <div className="space-y-8 animate-[fadeInUp_0.5s_ease-out]">
       {/* Title */}
@@ -1448,15 +1473,41 @@ function LiveMonitoringScreen({
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Graph Viewport */}
         <div className="lg:col-span-2 flex flex-col h-[520px]">
-          {!loading && graphData ? (
+          {loading ? (
+            <div className="relative flex-1 min-h-[480px] bg-[#0c0d10] border border-border rounded-[16px] flex items-center justify-center text-muted-foreground">
+              <span>Loading telemetry network diagram...</span>
+            </div>
+          ) : error ? (
+            <div className="relative flex-1 min-h-[480px] bg-[#0c0d10] border border-cyber-danger/25 rounded-[16px] flex flex-col items-center justify-center gap-4 text-center px-6">
+              <div className="h-12 w-12 rounded-full bg-cyber-danger/10 flex items-center justify-center">
+                <AlertTriangle className="h-6 w-6 text-cyber-danger" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Failed to load topology</h3>
+                <p className="text-xs text-muted-foreground mt-1 max-w-sm">{error}</p>
+              </div>
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  Retry Connection
+                </button>
+              )}
+            </div>
+          ) : hasGraph ? (
             <GraphViewer
               data={graphData}
               onSelectNode={onSelectNode}
               selectedNode={selectedNode}
             />
           ) : (
-            <div className="relative flex-1 min-h-[480px] bg-[#0c0d10] border border-border rounded-[16px] flex items-center justify-center text-muted-foreground">
-              <span>Loading telemetry network diagram...</span>
+            <div className="relative flex-1 min-h-[480px] bg-[#0c0d10] border border-border rounded-[16px] flex flex-col items-center justify-center gap-3 text-center px-6 text-muted-foreground">
+              <Activity size={28} className="text-muted-foreground/40" />
+              <div>
+                <h3 className="text-sm font-bold text-foreground">No topology data</h3>
+                <p className="text-xs mt-1 max-w-sm">No correlated attack-path nodes have been ingested yet.</p>
+              </div>
             </div>
           )}
         </div>
@@ -1831,7 +1882,17 @@ function IncidentResponseScreen({ incidents, onResolveIncident }: IncidentRespon
 // ==========================================
 // 6. AUDIT LOGS SCREEN COMPONENT
 // ==========================================
-function AuditLogsScreen({ logs }: { logs: UIAuditLog[] }) {
+function AuditLogsScreen({
+  logs,
+  error,
+  loading,
+  onRetry,
+}: {
+  logs: UIAuditLog[];
+  error?: string | null;
+  loading?: boolean;
+  onRetry?: () => void;
+}) {
   const [filterAgent, setFilterAgent] = useState("all");
 
   const filteredLogs = logs.filter(log => {
@@ -1860,6 +1921,45 @@ function AuditLogsScreen({ logs }: { logs: UIAuditLog[] }) {
         </select>
       </div>
 
+      {/* Error State — a failed request is distinct from an empty log. */}
+      {error && (
+        <div className="rounded-[20px] border border-cyber-danger/25 bg-card p-8 flex flex-col items-center justify-center text-center space-y-4 shadow-sm">
+          <div className="h-12 w-12 rounded-full bg-cyber-danger/10 flex items-center justify-center">
+            <AlertTriangle className="h-6 w-6 text-cyber-danger" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-foreground">Failed to load audit log</h3>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">{error}</p>
+          </div>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {loading ? "Retrying..." : "Retry"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Empty State — real backend returned no entries. */}
+      {!error && !loading && filteredLogs.length === 0 && (
+        <div className="rounded-[20px] border border-border bg-card p-12 flex flex-col items-center justify-center text-center space-y-3 shadow-sm">
+          <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center">
+            <ScrollText className="h-7 w-7 text-primary" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-foreground">No audit entries</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              No analyst approvals or automated SOAR actions have been recorded yet.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!error && filteredLogs.length > 0 && (
       <div className="rounded-[20px] border border-border bg-card overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm border-collapse">
@@ -1907,6 +2007,7 @@ function AuditLogsScreen({ logs }: { logs: UIAuditLog[] }) {
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }
