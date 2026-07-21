@@ -7,27 +7,17 @@ import {
   Shield,
   AlertTriangle,
   Activity,
-  Zap,
   Search,
   CheckCircle,
   User,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { IS_MOCK_MODE, apiGet, apiPost, ApiError } from "@/lib/api-client";
+import { IS_MOCK_MODE, apiGet, apiPost, ApiError, getToken } from "@/lib/api-client";
 import dynamic from "next/dynamic";
 import { MetricCard } from "@/components/shared/MetricCard";
-import {
-  DASHBOARD_METRICS,
-  SPARKLINE_DATA,
-  THREAT_SEVERITY,
-  BEHAVIOR_TIMELINE,
-  NETWORK_ACTIVITY,
-  ATTACK_TIMELINE,
-  THREAT_FEED,
-  THREAT_ORIGINS,
-  AUDIT_LOGS,
-} from "@/lib/dummy-data";
+import { AUDIT_LOGS } from "@/lib/dummy-data";
 import type { AnomalyListItem, AnomalyListResponse, NarrativeResponse } from "@/types/api";
 import { GraphNode, GraphLink } from "../api/graph/route";
 import { FALLBACK_GRAPH_DATA } from "@/lib/graph-data";
@@ -47,22 +37,10 @@ interface RawAuditLog {
 }
 
 // Lazy load heavy chart components
-const BehaviorChart = dynamic(() => import("@/components/dashboard/charts/BehaviorChart"), {
-  ssr: false,
-  loading: () => <ChartSkeleton />,
-});
-const NetworkChart = dynamic(() => import("@/components/dashboard/charts/NetworkChart"), {
-  ssr: false,
-  loading: () => <ChartSkeleton />,
-});
 const ThreatSeverityGauges = dynamic(
   () => import("@/components/dashboard/charts/ThreatSeverityGauges"),
   { ssr: false, loading: () => <ChartSkeleton /> }
 );
-const WorldThreatMap = dynamic(() => import("@/components/dashboard/charts/WorldThreatMap"), {
-  ssr: false,
-  loading: () => <ChartSkeleton height={400} />,
-});
 
 // Dynamically import the Force Graph component to disable SSR
 const GraphViewer = dynamic(() => import("@/components/dashboard/GraphViewer"), {
@@ -424,24 +402,118 @@ export default function DashboardPage() {
 // ==========================================
 // 1. OVERVIEW SCREEN COMPONENT
 // ==========================================
-function OverviewScreen() {
-  const [isScanning, setIsScanning] = useState(false);
+interface OverviewAuditItem {
+  id: string;
+  action: string;
+  actor: string;
+  timestamp: string;
+}
 
-  const handleQuickScan = async () => {
-    if (isScanning) return; // guard against double-clicks
-    setIsScanning(true);
+function OverviewScreen() {
+  const [alerts, setAlerts] = useState<AnomalyListItem[]>([]);
+  const [nodeCount, setNodeCount] = useState<number | null>(null);
+  const [auditItems, setAuditItems] = useState<OverviewAuditItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadOverview = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      // TODO: Wire to real backend scan endpoint when available
-      // For now, simulate a scan in both mock and real modes
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      toast.success("Quick scan complete. Baseline nominal.");
+      const [anomaliesRes, graphRes] = await Promise.all([
+        apiGet<AnomalyListResponse>("/anomalies"),
+        apiGet<{ nodes: GraphNode[]; links: GraphLink[] }>("/graph"),
+      ]);
+
+      if (!anomaliesRes || !Array.isArray(anomaliesRes.items)) {
+        throw new Error("Unexpected anomalies response shape (expected { items })");
+      }
+
+      setAlerts(anomaliesRes.items);
+      setNodeCount(Array.isArray(graphRes?.nodes) ? graphRes.nodes.length : null);
+
+      // Audit trail is only backed in real mode (no mock route exists).
+      if (!IS_MOCK_MODE) {
+        try {
+          const auditRes = await apiGet<{ items: RawAuditLog[] }>("/audit");
+          setAuditItems(
+            (auditRes.items ?? []).map((row) => ({
+              id: row.audit_id ?? row.id ?? crypto.randomUUID(),
+              action: row.action_type ?? row.action ?? "unknown",
+              actor: row.actor ?? row.user ?? "system",
+              timestamp: row.created_at ?? row.timestamp ?? new Date().toISOString(),
+            })),
+          );
+        } catch {
+          setAuditItems([]);
+        }
+      } else {
+        setAuditItems([]);
+      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Scan failed unexpectedly.";
-      toast.error(message);
+      console.error("Error fetching overview data", err);
+      setError(err instanceof Error ? err.message : "Unable to connect to telemetry grid");
     } finally {
-      setIsScanning(false);
+      setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      loadOverview();
+    });
+  }, [loadOverview]);
+
+  const totalAnomalies = alerts.length;
+  const criticalCount = alerts.filter((a) => a.severity === "critical").length;
+  const highCount = alerts.filter((a) => a.severity === "high").length;
+  const mediumCount = alerts.filter((a) => a.severity === "medium").length;
+  const lowCount = alerts.filter((a) => a.severity === "low").length;
+  const activeCount = alerts.filter((a) => a.status === "new" || a.status === "investigating").length;
+  const containedCount = alerts.filter((a) => a.status === "contained").length;
+
+  // Threat posture derived from live anomaly mix (same rule as the monitor screen).
+  let posture = "Guarded";
+  let postureClass = "border-cyber-green/20 bg-cyber-green/5 text-cyber-green";
+  let postureDot = "bg-cyber-green";
+  if (criticalCount > 5 || highCount > 15) {
+    posture = "Critical";
+    postureClass = "border-cyber-danger/20 bg-cyber-danger/5 text-cyber-danger";
+    postureDot = "bg-cyber-danger";
+  } else if (criticalCount > 0 || highCount > 5) {
+    posture = "Elevated";
+    postureClass = "border-cyber-warning/20 bg-cyber-warning/5 text-cyber-warning";
+    postureDot = "bg-cyber-warning";
+  }
+
+  const severityData = {
+    critical: criticalCount,
+    high: highCount,
+    medium: mediumCount,
+    low: lowCount,
+    info: 0,
   };
+
+  const metrics: {
+    label: string;
+    value: number;
+    change: number;
+    trend: "up" | "down" | "neutral";
+    severity?: string;
+  }[] = [
+    { label: "Active Anomalies", value: activeCount, change: 0, trend: "neutral", severity: activeCount > 0 ? "high" : undefined },
+    { label: "Critical", value: criticalCount, change: 0, trend: "neutral" },
+    { label: "High Severity", value: highCount, change: 0, trend: "neutral" },
+    { label: "Contained", value: containedCount, change: 0, trend: "neutral" },
+    { label: "Total Anomalies", value: totalAnomalies, change: 0, trend: "neutral" },
+  ];
+  if (nodeCount !== null) {
+    metrics.push({ label: "Monitored Nodes", value: nodeCount, change: 0, trend: "neutral" });
+  }
+
+  const recentAlerts = [...alerts]
+    .sort((a, b) => new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime())
+    .slice(0, 6);
 
   return (
     <div className="space-y-8">
@@ -456,194 +528,170 @@ function OverviewScreen() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 rounded-full border border-cyber-warning/20 bg-cyber-warning/5 px-4 py-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-cyber-warning animate-pulse" />
-            <span className="text-xs font-semibold text-cyber-warning uppercase tracking-wider">
-              Threat Level: Elevated
-            </span>
-          </div>
+          {!loading && !error && (
+            <div className={`flex items-center gap-2 rounded-full border px-4 py-2 ${postureClass}`}>
+              <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${postureDot}`} />
+              <span className="text-xs font-semibold uppercase tracking-wider">
+                Threat Level: {posture}
+              </span>
+            </div>
+          )}
           <button
-            onClick={handleQuickScan}
-            disabled={isScanning}
-            className="hidden md:inline-flex items-center gap-2 rounded-[14px] bg-cyber-green px-4 py-2 text-xs font-semibold text-black hover:bg-cyber-green/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            onClick={loadOverview}
+            disabled={loading}
+            className="hidden md:inline-flex items-center gap-2 rounded-[14px] border border-border bg-white/[0.03] px-4 py-2 text-xs font-semibold text-muted-foreground hover:bg-white/[0.06] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {isScanning ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Zap className="h-3.5 w-3.5" />
-            )}
-            {isScanning ? "Scanning..." : "Quick Scan"}
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            Refresh
           </button>
         </div>
       </div>
 
-      {/* Metric Cards Row 1 */}
-      <div>
-        <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground/50 mb-4">
-          Infrastructure Overview
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {DASHBOARD_METRICS.infrastructure.map((metric, i) => (
-            <MetricCard
-              key={metric.label}
-              {...metric}
-              sparklineData={i === 0 ? SPARKLINE_DATA.assets : undefined}
-              index={i}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Metric Cards Row 2 */}
-      <div>
-        <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground/50 mb-4">
-          Security Metrics
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-          {DASHBOARD_METRICS.security.map((metric, i) => (
-            <MetricCard
-              key={metric.label}
-              {...metric}
-              sparklineData={
-                metric.label === "Live Threats"
-                  ? SPARKLINE_DATA.threats
-                  : metric.label === "Blocked Today"
-                  ? SPARKLINE_DATA.blocked
-                  : metric.label === "AI Confidence"
-                  ? SPARKLINE_DATA.confidence
-                  : undefined
-              }
-              index={i + 5}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Charts Row 1 */}
-      <div className="grid lg:grid-cols-[380px,1fr] gap-6">
-        <div className="rounded-[20px] border border-border bg-card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-sm font-semibold">Threat Severity Distribution</h3>
-            <span className="text-[10px] text-muted-foreground">Last 24h</span>
+      {/* Error State */}
+      {error && (
+        <div className="rounded-[20px] border border-border bg-card p-8 flex flex-col items-center justify-center text-center space-y-4 shadow-sm">
+          <div className="h-12 w-12 rounded-full bg-cyber-danger/10 flex items-center justify-center">
+            <AlertTriangle className="h-6 w-6 text-cyber-danger" />
           </div>
-          <ThreatSeverityGauges data={THREAT_SEVERITY} />
-        </div>
-
-        <div className="rounded-[20px] border border-border bg-card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-sm font-semibold">Behavior Detection Trend</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                User & entity behavior analysis (UEBA)
-              </p>
-            </div>
-            <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-cyber-green" />
-                Normal
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-cyber-danger" />
-                Anomaly
-              </span>
-            </div>
-          </div>
-          <BehaviorChart data={BEHAVIOR_TIMELINE} />
-        </div>
-      </div>
-
-      {/* Charts Row 2 */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="rounded-[20px] border border-border bg-card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-sm font-semibold">Network Activity</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Real-time bandwidth & connection loops
-              </p>
-            </div>
-            <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-cyber-info" />
-                Bandwidth
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-cyber-green" />
-                Connections
-              </span>
-            </div>
-          </div>
-          <NetworkChart data={NETWORK_ACTIVITY} />
-        </div>
-
-        <div className="rounded-[20px] border border-border bg-card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-sm font-semibold">Global Attack Origins</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Threat targeting locations
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <span className="h-1.5 w-1.5 rounded-full bg-cyber-green animate-pulse" />
-              <span>Live Monitor</span>
-            </div>
-          </div>
-          <WorldThreatMap origins={THREAT_ORIGINS} />
-        </div>
-      </div>
-
-      {/* Quick Feed Row */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Timeline */}
-        <div className="lg:col-span-2 rounded-[20px] border border-border bg-card p-6">
-          <h3 className="text-sm font-semibold mb-6">Attack Timeline</h3>
-          <div className="space-y-4">
-            {ATTACK_TIMELINE.slice(0, 4).map((event) => (
-              <div key={event.id} className="flex gap-4 border-b border-border/30 pb-4 last:border-0 last:pb-0">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-cyber-warning/10 border border-cyber-warning/20 shrink-0">
-                  <AlertTriangle className="h-4 w-4 text-cyber-warning" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start">
-                    <p className="text-sm font-semibold text-foreground">{event.title}</p>
-                    <span className="text-[10px] text-muted-foreground font-mono">{event.time}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{event.description}</p>
-                  <div className="flex items-center gap-3 mt-1.5 text-[10px] text-muted-foreground font-mono">
-                    <span className="text-cyber-purple">{event.mitre}</span>
-                    <span className="text-cyber-green">AI Action: {event.aiAction}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Short Feed */}
-        <div className="rounded-[20px] border border-border bg-card p-6 flex flex-col justify-between">
           <div>
-            <h3 className="text-sm font-semibold mb-4">Security Intel Feed</h3>
-            <div className="space-y-3.5">
-              {THREAT_FEED.slice(0, 3).map((threat) => (
-                <div key={threat.id} className="text-xs space-y-1">
-                  <div className="flex justify-between font-medium">
-                    <span className="text-foreground">{threat.threat}</span>
-                    <span className="text-cyber-danger uppercase font-bold">{threat.status}</span>
-                  </div>
-                  <div className="flex justify-between text-[11px] text-muted-foreground font-mono">
-                    <span>Source: {threat.source}</span>
-                    <span>Confidence: {threat.confidence}%</span>
-                  </div>
-                </div>
+            <h3 className="text-base font-bold text-foreground">Unable to connect to telemetry grid</h3>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+              We couldn&apos;t retrieve the latest infrastructure telemetry. Check the connection and try again.
+            </p>
+          </div>
+          <button
+            onClick={loadOverview}
+            disabled={loading}
+            className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {loading ? "Retrying..." : "Retry Connection"}
+          </button>
+        </div>
+      )}
+
+      {/* Loading State */}
+      {loading && !error && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="rounded-[18px] border border-border bg-card h-28 animate-pulse" />
+          ))}
+        </div>
+      )}
+
+      {!loading && !error && (
+        <>
+          {/* Derived Security Metrics */}
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground/50 mb-4">
+              Live Security Metrics
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              {metrics.map((metric, i) => (
+                <MetricCard key={metric.label} {...metric} index={i} />
               ))}
             </div>
           </div>
-          <div className="border-t border-border/40 pt-4 text-center mt-4">
-            <span className="text-xs text-muted-foreground">Overall system status normal.</span>
+
+          {/* Severity Distribution + Recent Activity */}
+          <div className="grid lg:grid-cols-[380px,1fr] gap-6 items-start">
+            <div className="rounded-[20px] border border-border bg-card p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-sm font-semibold">Threat Severity Distribution</h3>
+                <span className="text-[10px] text-muted-foreground">Live</span>
+              </div>
+              {totalAnomalies > 0 ? (
+                <ThreatSeverityGauges data={severityData} />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+                  <Shield className="h-8 w-8 text-cyber-green mb-3" />
+                  <p className="text-sm font-semibold text-foreground">No active anomalies</p>
+                  <p className="text-xs mt-1">Infrastructure nominal — nothing to distribute.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-[20px] border border-border bg-card p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-sm font-semibold">Recent Anomaly Activity</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Latest scored detections from the ingestion stream
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyber-green animate-pulse" />
+                  <span>Live</span>
+                </div>
+              </div>
+              {recentAlerts.length > 0 ? (
+                <div className="space-y-4">
+                  {recentAlerts.map((event) => (
+                    <div key={event.anomaly_id} className="flex gap-4 border-b border-border/30 pb-4 last:border-0 last:pb-0">
+                      <div className={`flex h-8 w-8 items-center justify-center rounded-full shrink-0 border ${
+                        event.severity === "critical" ? "bg-cyber-danger/10 border-cyber-danger/20" :
+                        event.severity === "high" ? "bg-cyber-warning/10 border-cyber-warning/20" :
+                        "bg-cyber-info/10 border-cyber-info/20"
+                      }`}>
+                        <AlertTriangle className={`h-4 w-4 ${
+                          event.severity === "critical" ? "text-cyber-danger" :
+                          event.severity === "high" ? "text-cyber-warning" :
+                          "text-cyber-info"
+                        }`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start gap-2">
+                          <p className="text-sm font-semibold text-foreground truncate">{event.title}</p>
+                          <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+                            {new Date(event.detected_at).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground font-mono">
+                          <span className="uppercase font-semibold">{event.severity}</span>
+                          <span className="truncate">Asset: {event.asset_id}</span>
+                          <span className="text-cyber-purple truncate">{event.reason}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+                  <Shield className="h-8 w-8 text-cyber-green mb-3" />
+                  <p className="text-sm font-semibold text-foreground">Zero active threats detected</p>
+                  <p className="text-xs mt-1">No anomalies in the current ingestion window.</p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+
+          {/* Audit / SOAR Activity (real mode only) */}
+          {!IS_MOCK_MODE && (
+            <div className="rounded-[20px] border border-border bg-card p-6">
+              <h3 className="text-sm font-semibold mb-4">Recent Response Activity</h3>
+              {auditItems.length > 0 ? (
+                <div className="space-y-3.5">
+                  {auditItems.slice(0, 5).map((item) => (
+                    <div key={item.id} className="flex justify-between items-center text-xs border-b border-border/30 pb-2.5 last:border-0 last:pb-0">
+                      <div className="min-w-0">
+                        <p className="text-foreground font-medium truncate">{item.action}</p>
+                        <p className="text-[11px] text-muted-foreground font-mono truncate">Actor: {item.actor}</p>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground font-mono shrink-0 ml-3">
+                        {new Date(item.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic py-6 text-center">
+                  No response actions recorded yet.
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -1866,32 +1914,39 @@ function AuditLogsScreen({ logs }: { logs: UIAuditLog[] }) {
 // ==========================================
 // 7. PROFILE & PLATFORM SETTINGS SCREEN
 // ==========================================
+interface SessionIdentity {
+  email: string | null;
+  role: string | null;
+}
+
+/** Decodes non-sensitive claims (email, role) from the in-memory JWT, if present. */
+function readSessionIdentity(): SessionIdentity {
+  const token = getToken();
+  if (!token || token === "mock-session") return { email: null, role: null };
+  try {
+    const payload = token.split(".")[1];
+    const claims = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    const role =
+      claims?.app_metadata?.role ??
+      claims?.role ??
+      (Array.isArray(claims?.roles) ? claims.roles[0] : null) ??
+      null;
+    return { email: claims?.email ?? null, role: role ?? null };
+  } catch {
+    return { email: null, role: null };
+  }
+}
+
 function ProfileSettingsScreen() {
-  const [name, setName] = useState("Vikram Singh");
-  const [email] = useState("admin@cybershield.gov.in");
-  const [phone, setPhone] = useState("+91 98765 43210");
-  const [mfa, setMfa] = useState(true);
-  const [sessionDuration, setSessionDuration] = useState("1h");
-  const [autoIsolate, setAutoIsolate] = useState(true);
-  const [alertSound, setAlertSound] = useState(true);
-  const [apiKey, setApiKey] = useState("cs_live_7a9f82d1c6e4530b12fd9a764b8a");
-  const [showKey, setShowKey] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [identity, setIdentity] = useState<SessionIdentity>({ email: null, role: null });
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
-  };
+  useEffect(() => {
+    setIdentity(readSessionIdentity());
+  }, []);
 
-  const handleRegenKey = () => {
-    const chars = "abcdef0123456789";
-    let key = "cs_live_";
-    for (let i = 0; i < 24; i++) {
-      key += chars[Math.floor(Math.random() * chars.length)];
-    }
-    setApiKey(key);
-  };
+  const initials = identity.email
+    ? identity.email.slice(0, 2).toUpperCase()
+    : "--";
 
   return (
     <div className="space-y-6 animate-[fadeInUp_0.5s_ease-out]">
@@ -1899,200 +1954,70 @@ function ProfileSettingsScreen() {
       <div>
         <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">Profile & Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure security policy rules, automation thresholds, API tokens, and analyst preferences.
+          Your signed-in account details for this session.
         </p>
       </div>
 
-      <form onSubmit={handleSave} className="grid md:grid-cols-[1.2fr,1.8fr] gap-6 items-start">
-        {/* Left Column: Avatar & Personal Info */}
-        <div className="space-y-6">
-          <div className="rounded-[24px] border border-border bg-card p-6 flex flex-col items-center text-center space-y-4 shadow-sm">
-            <div className="relative">
-              <div className="h-20 w-20 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-2xl font-bold text-primary font-heading">
-                VS
-              </div>
-              <div className="absolute bottom-0 right-0 h-6 w-6 rounded-full bg-primary flex items-center justify-center text-white border-2 border-card text-[10px] cursor-pointer hover:bg-primary/90 transition-colors">
-                ✎
-              </div>
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-foreground">Vikram Singh</h3>
-              <p className="text-xs text-muted-foreground/80 mt-0.5">Lead Triage Analyst</p>
-              <p className="text-[10px] bg-white/[0.04] border border-border px-2 py-0.5 rounded text-muted-foreground font-mono-numbers mt-2 inline-block">
-                Sector 4 OT Controller
+      <div className="grid md:grid-cols-[1.2fr,1.8fr] gap-6 items-start">
+        {/* Left Column: Account identity from the session token */}
+        <div className="rounded-[24px] border border-border bg-card p-6 flex flex-col items-center text-center space-y-4 shadow-sm">
+          <div className="h-20 w-20 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-2xl font-bold text-primary font-heading">
+            {initials}
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-foreground break-all">
+              {identity.email ?? "Not signed in"}
+            </h3>
+            {identity.role && (
+              <p className="text-[10px] bg-white/[0.04] border border-border px-2 py-0.5 rounded text-muted-foreground font-mono-numbers inline-block uppercase tracking-wider">
+                {identity.role}
               </p>
-            </div>
-          </div>
-
-          <div className="rounded-[20px] border border-border bg-card p-5 space-y-4 shadow-sm">
-            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground/60 border-b border-border/40 pb-2">
-              Personal Information
-            </h3>
-            
-            <div className="space-y-3 text-xs">
-              <div className="space-y-1">
-                <label className="text-muted-foreground block font-medium">Full Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/[0.01] border border-border rounded-xl focus:outline-none focus:border-primary text-foreground font-medium"
-                />
-              </div>
-              
-              <div className="space-y-1">
-                <label className="text-muted-foreground block font-medium">Email Address</label>
-                <input
-                  type="email"
-                  value={email}
-                  disabled
-                  className="w-full px-3 py-2 bg-white/[0.02] border border-border/40 rounded-xl text-muted-foreground cursor-not-allowed font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-muted-foreground block font-medium">Mobile Contact</label>
-                <input
-                  type="text"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/[0.01] border border-border rounded-xl focus:outline-none focus:border-primary text-foreground font-medium"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: Platform Configuration & API Control */}
-        <div className="space-y-6">
-          {/* Security & Access Panel */}
-          <div className="rounded-[20px] border border-border bg-card p-6 space-y-4 shadow-sm">
-            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground/60 border-b border-border/40 pb-2">
-              Security & Access Policies
-            </h3>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-foreground block">Multi-Factor Authentication (MFA)</span>
-                  <span className="text-[11px] text-muted-foreground">Require hardware token authentication on sign-in.</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={mfa}
-                  onChange={(e) => setMfa(e.target.checked)}
-                  className="w-4 h-4 accent-primary cursor-pointer"
-                />
-              </div>
-
-              <div className="flex items-center justify-between border-t border-border/30 pt-4">
-                <div>
-                  <span className="text-xs font-bold text-foreground block">Automatic Inactive Logout</span>
-                  <span className="text-[11px] text-muted-foreground">Terminate session after periods of inactivity.</span>
-                </div>
-                <select
-                  value={sessionDuration}
-                  onChange={(e) => setSessionDuration(e.target.value)}
-                  className="px-2 py-1.5 bg-card border border-border rounded-lg focus:outline-none text-xs text-foreground"
-                >
-                  <option value="15m">15 Minutes</option>
-                  <option value="30m">30 Minutes</option>
-                  <option value="1h">1 Hour</option>
-                  <option value="4h">4 Hours</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-border/30 pt-4">
-                <div>
-                  <span className="text-xs font-bold text-foreground block">Telemetry Alert Tones</span>
-                  <span className="text-[11px] text-muted-foreground">Play alert warning sounds when critical signatures are detected.</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={alertSound}
-                  onChange={(e) => setAlertSound(e.target.checked)}
-                  className="w-4 h-4 accent-primary cursor-pointer"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* SOAR Automation Settings */}
-          <div className="rounded-[20px] border border-border bg-card p-6 space-y-4 shadow-sm">
-            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground/60 border-b border-border/40 pb-2">
-              SOAR Automation Rules
-            </h3>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-foreground block">Automate Critical Substation Isolation</span>
-                  <span className="text-[11px] text-muted-foreground">Instantly fire SDN containment rules on critical severity OT drift scans.</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={autoIsolate}
-                  onChange={(e) => setAutoIsolate(e.target.checked)}
-                  className="w-4 h-4 accent-primary cursor-pointer"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* API Key Generation */}
-          <div className="rounded-[20px] border border-border bg-card p-6 space-y-4 shadow-sm">
-            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground/60 border-b border-border/40 pb-2">
-              Analyst API Key
-            </h3>
-
-            <div className="space-y-3">
-              <p className="text-[11px] text-muted-foreground">
-                Use this token to query the telemetry endpoint `/api/v1/predict` programmatically from local terminal clients.
-              </p>
-              
-              <div className="flex gap-2">
-                <input
-                  type={showKey ? "text" : "password"}
-                  value={apiKey}
-                  readOnly
-                  className="flex-1 px-3 py-2 bg-white/[0.02] border border-border text-xs rounded-xl font-mono text-foreground focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="px-3 border border-border hover:bg-white/[0.04] rounded-xl text-xs transition-colors text-foreground font-semibold"
-                >
-                  {showKey ? "Hide" : "Show"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRegenKey}
-                  className="px-3 border border-border hover:bg-white/[0.04] rounded-xl text-xs transition-colors text-foreground font-semibold"
-                >
-                  Regenerate
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Form Actions */}
-          <div className="flex items-center justify-between">
-            {saveSuccess ? (
-              <span className="text-xs text-cyber-success font-semibold flex items-center gap-1.5 animate-pulse">
-                ✓ Changes saved successfully.
-              </span>
-            ) : (
-              <span />
             )}
-            <button
-              type="submit"
-              className="px-6 py-2.5 bg-primary text-primary-foreground font-bold text-xs rounded-xl hover:bg-primary/95 transition-all shadow-[0_4px_12px_rgba(234,88,12,0.15)]"
-            >
-              Save Configurations
-            </button>
           </div>
         </div>
-      </form>
+
+        {/* Right Column: Account + platform info */}
+        <div className="space-y-6">
+          <div className="rounded-[20px] border border-border bg-card p-6 space-y-4 shadow-sm">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground/60 border-b border-border/40 pb-2">
+              Account
+            </h3>
+
+            <div className="space-y-3 text-xs">
+              <div className="flex items-center justify-between border-b border-border/20 pb-2.5">
+                <span className="text-muted-foreground font-medium">Email Address</span>
+                <span className="font-mono text-foreground break-all text-right">
+                  {identity.email ?? "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-b border-border/20 pb-2.5">
+                <span className="text-muted-foreground font-medium">Role</span>
+                <span className="font-mono text-foreground uppercase">
+                  {identity.role ?? "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground font-medium">Session Mode</span>
+                <span className="font-mono text-foreground">
+                  {IS_MOCK_MODE ? "Mock (dev)" : "Live backend"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[20px] border border-border bg-card p-6 shadow-sm">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground/60 border-b border-border/40 pb-2 mb-3">
+              Security Policies
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Account security policies (MFA, session lifetime, API tokens) are managed centrally
+              by your administrator and are not configurable from this console. To end your current
+              session, use <span className="text-foreground font-semibold">Sign Out</span> in the
+              navigation bar.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

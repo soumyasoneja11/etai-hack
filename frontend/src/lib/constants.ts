@@ -8,6 +8,8 @@ import {
   Target,
   Cpu,
   ScrollText,
+  Radar,
+  Share2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -45,7 +47,9 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { label: "Overview", href: "/dashboard?tab=overview", icon: LayoutDashboard },
       { label: "Alerts Queue", href: "/dashboard?tab=alerts", icon: AlertTriangle, badge: "Live" },
+      { label: "Live Threat Monitor", href: "/dashboard/threat-monitor", icon: Radar },
       { label: "Attack Path Graph", href: "/dashboard?tab=topology", icon: Network },
+      { label: "Attack Path Topology", href: "/dashboard/topology", icon: Share2 },
       { label: "Digital Twin", href: "/dashboard?tab=twin", icon: Cpu },
     ],
   },
