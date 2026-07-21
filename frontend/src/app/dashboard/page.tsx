@@ -1,33 +1,21 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield,
   AlertTriangle,
   Activity,
   Zap,
-  ChevronRight,
-  ExternalLink,
-  Clock,
   Search,
-  Filter,
-  Network,
-  Cpu,
-  Target,
-  ScrollText,
   CheckCircle,
-  XCircle,
   User,
-  LayoutDashboard,
-  Calendar,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { IS_MOCK_MODE, apiGet, apiPost, ApiError } from "@/lib/api-client";
 import dynamic from "next/dynamic";
-import { cn } from "@/lib/utils";
 import { MetricCard } from "@/components/shared/MetricCard";
 import {
   DASHBOARD_METRICS,
@@ -40,9 +28,23 @@ import {
   THREAT_ORIGINS,
   AUDIT_LOGS,
 } from "@/lib/dummy-data";
-import { SEVERITY_LEVELS } from "@/lib/constants";
 import type { AnomalyListItem, AnomalyListResponse, NarrativeResponse } from "@/types/api";
 import { GraphNode, GraphLink } from "../api/graph/route";
+import { FALLBACK_GRAPH_DATA } from "@/lib/graph-data";
+
+interface RawAuditLog {
+  audit_id?: string;
+  id?: string;
+  action_type?: string;
+  action?: string;
+  actor?: string;
+  user?: string;
+  type?: string;
+  created_at?: string;
+  timestamp?: string;
+  details?: string | Record<string, unknown>;
+  status?: string;
+}
 
 // Lazy load heavy chart components
 const BehaviorChart = dynamic(() => import("@/components/dashboard/charts/BehaviorChart"), {
@@ -86,9 +88,104 @@ function ChartSkeleton({ height = 300 }: { height?: number }) {
   );
 }
 
+interface Incident {
+  id: string;
+  title: string;
+  severity: string;
+  tactic: string;
+  asset_id: string;
+  reason: string;
+  impact: string;
+  status: string;
+  detected_at: string;
+}
+
+interface UIAuditLog {
+  id: string;
+  action: string;
+  user: string;
+  type: string;
+  timestamp: string;
+  details: string;
+  status: string;
+}
+
+interface FeatureWeight {
+  name: string;
+  weight: number;
+}
+
+interface CveRecord {
+  doc_id: string;
+  title: string;
+  description: string;
+  source_url?: string;
+  cvss_score?: number | null;
+  remediation?: string;
+}
+
+interface CertInAdvisory {
+  doc_id: string;
+  title: string;
+  description: string;
+  source_url?: string;
+  remediation?: string;
+}
+
+interface ThreatIntel {
+  total: number;
+  related_cves?: CveRecord[];
+  cert_in_advisories?: CertInAdvisory[];
+  mitre_info?: {
+    technique?: string;
+    mitre_id?: string;
+    description?: string;
+    orchestration?: {
+      blast_radius?: string;
+      playbook_id?: string;
+    };
+    telemetry_indicators?: string[];
+  };
+}
+
+const MOCK_INCIDENTS = [
+  {
+    id: "INC-904",
+    title: "Isolate Outbound Gateway Feeder-101",
+    severity: "critical",
+    tactic: "Impact / Denial of Service",
+    asset_id: "dst-80-win-255",
+    reason: "DDoS",
+    impact: "Prevents complete subnet phase drift. Limits attack velocity.",
+    status: "pending",
+    detected_at: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
+  },
+  {
+    id: "INC-302",
+    title: "Revoke Session token on SCADA Router RTU-1",
+    severity: "high",
+    tactic: "Command and Control / Botnet",
+    asset_id: "src-telnet-iot-node",
+    reason: "Bot",
+    impact: "Disconnects C2 relay node beacon loops. Restores local switch control.",
+    status: "pending",
+    detected_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+  },
+  {
+    id: "INC-122",
+    title: "Block Inbound Scanner Route 198.51.100.74",
+    severity: "medium",
+    tactic: "Reconnaissance / Port Sweep",
+    asset_id: "dst-80-win-255",
+    reason: "PortScan",
+    impact: "Halts remote mapping probes. Mitigates enumeration scans.",
+    status: "pending",
+    detected_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+  },
+];
+
 export default function DashboardPage() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const activeTab = searchParams.get("tab") || "overview";
 
   // Share alerts & graph state across views
@@ -99,46 +196,10 @@ export default function DashboardPage() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
   // Dynamic Audit Logs state so we can add logs in real-time
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<UIAuditLog[]>([]);
 
   // Interactive Incident Response Review Queue state
-  const MOCK_INCIDENTS = [
-    {
-      id: "INC-904",
-      title: "Isolate Outbound Gateway Feeder-101",
-      severity: "critical",
-      tactic: "Impact / Denial of Service",
-      asset_id: "dst-80-win-255",
-      reason: "DDoS",
-      impact: "Prevents complete subnet phase drift. Limits attack velocity.",
-      status: "pending",
-      detected_at: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
-    },
-    {
-      id: "INC-302",
-      title: "Revoke Session token on SCADA Router RTU-1",
-      severity: "high",
-      tactic: "Command and Control / Botnet",
-      asset_id: "src-telnet-iot-node",
-      reason: "Bot",
-      impact: "Disconnects C2 relay node beacon loops. Restores local switch control.",
-      status: "pending",
-      detected_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    },
-    {
-      id: "INC-122",
-      title: "Block Inbound Scanner Route 198.51.100.74",
-      severity: "medium",
-      tactic: "Reconnaissance / Port Sweep",
-      asset_id: "dst-80-win-255",
-      reason: "PortScan",
-      impact: "Halts remote mapping probes. Mitigates enumeration scans.",
-      status: "pending",
-      detected_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    },
-  ];
-
-  const [incidents, setIncidents] = useState<any[]>(IS_MOCK_MODE ? MOCK_INCIDENTS : []);
+  const [incidents, setIncidents] = useState<Incident[]>(IS_MOCK_MODE ? MOCK_INCIDENTS : []);
 
   const mapQueueToIncidents = (items: AnomalyListItem[]) =>
     (items ?? []).map((item) => ({
@@ -166,12 +227,12 @@ export default function DashboardPage() {
   }, []);
 
   // Fetch initial alerts & graph data
-  const mapAuditRows = (items: any[]) =>
-    items.map((row: any) => ({
-      id: row.audit_id ?? row.id,
+  const mapAuditRows = (items: RawAuditLog[]): UIAuditLog[] =>
+    items.map((row: RawAuditLog) => ({
+      id: row.audit_id ?? row.id ?? "",
       action: row.action_type ?? row.action ?? "unknown",
-      user: row.actor ?? "system",
-      type: row.actor === "system" ? "automated" : "manual",
+      user: row.actor ?? row.user ?? "system",
+      type: row.actor === "system" || row.type === "automated" ? "automated" : "manual",
       timestamp: row.created_at ?? row.timestamp ?? new Date().toISOString(),
       details: typeof row.details === "object" ? JSON.stringify(row.details) : (row.details ?? ""),
       status: row.status ?? "success",
@@ -180,7 +241,7 @@ export default function DashboardPage() {
   const refreshAuditLogs = useCallback(async () => {
     if (IS_MOCK_MODE) return;
     try {
-      const auditRes = await apiGet<{ items: any[] }>("/audit");
+      const auditRes = await apiGet<{ items: RawAuditLog[] }>("/audit");
       const mapped = mapAuditRows(auditRes.items ?? []);
       setAuditLogs(mapped.length > 0 ? mapped : AUDIT_LOGS);
     } catch {
@@ -202,12 +263,12 @@ export default function DashboardPage() {
       }
 
       setAlerts(anomaliesRes.items);
-      setGraphData(graphDataRes);
+      setGraphData((graphDataRes.nodes?.length ?? 0) > 0 ? graphDataRes : FALLBACK_GRAPH_DATA);
 
       // Fetch audit logs: from backend in real mode, dummy data in mock mode
       if (!IS_MOCK_MODE) {
         try {
-          const auditRes = await apiGet<{ items: any[] }>("/audit");
+          const auditRes = await apiGet<{ items: RawAuditLog[] }>("/audit");
           const mapped = mapAuditRows(auditRes.items ?? []);
           setAuditLogs(mapped.length > 0 ? mapped : AUDIT_LOGS);
         } catch {
@@ -219,6 +280,7 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("Error fetching dashboard data", err);
+      setGraphData(FALLBACK_GRAPH_DATA);
       setFetchError(
         err instanceof Error ? err.message : "Unable to connect to telemetry grid",
       );
@@ -228,7 +290,9 @@ export default function DashboardPage() {
   }, [refreshReviewQueue]);
 
   useEffect(() => {
-    fetchData();
+    queueMicrotask(() => {
+      fetchData();
+    });
   }, [fetchData]);
 
   const handleUpdateAlertStatus = (anomalyId: string, newStatus: AnomalyListItem["status"]) => {
@@ -306,7 +370,7 @@ export default function DashboardPage() {
           transition={{ duration: 0.25, ease: "easeOut" }}
         >
           {activeTab === "overview" && (
-            <OverviewScreen alerts={alerts} />
+            <OverviewScreen />
           )}
 
           {activeTab === "alerts" && (
@@ -360,7 +424,7 @@ export default function DashboardPage() {
 // ==========================================
 // 1. OVERVIEW SCREEN COMPONENT
 // ==========================================
-function OverviewScreen({ alerts }: { alerts: AnomalyListItem[] }) {
+function OverviewScreen() {
   const [isScanning, setIsScanning] = useState(false);
 
   const handleQuickScan = async () => {
@@ -605,7 +669,7 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, onRefre
 
   // Tab State for Alert detail panel
   const [detailTab, setDetailTab] = useState<"info" | "intel" | "narrative">("info");
-  const [threatIntel, setThreatIntel] = useState<any>(null);
+  const [threatIntel, setThreatIntel] = useState<ThreatIntel | null>(null);
   const [loadingIntel, setLoadingIntel] = useState(false);
   const [narrative, setNarrative] = useState<NarrativeResponse | null>(null);
   const [loadingNarrative, setLoadingNarrative] = useState(false);
@@ -618,52 +682,54 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, onRefre
 
   // Load threat intelligence + persisted narrative when selected alert changes
   useEffect(() => {
-    if (!selectedAlert) {
-      setThreatIntel(null);
-      setNarrative(null);
-      return;
-    }
-
-    const fetchIntel = async () => {
-      setLoadingIntel(true);
-      try {
-        const label = encodeURIComponent(selectedAlert.reason);
-        const data = await apiGet<any>(`/threat-intel/${label}`);
-        setThreatIntel(data);
-      } catch (err) {
-        console.error("Error fetching threat intel", err);
+    queueMicrotask(() => {
+      if (!selectedAlert) {
         setThreatIntel(null);
-      } finally {
-        setLoadingIntel(false);
-      }
-    };
-
-    const fetchNarrative = async () => {
-      if (IS_MOCK_MODE) {
         setNarrative(null);
         return;
       }
-      setLoadingNarrative(true);
-      try {
-        const data = await apiGet<NarrativeResponse>(
-          `/narrative/${encodeURIComponent(selectedAlert.anomaly_id)}`,
-        );
-        setNarrative(data);
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 404) {
-          setNarrative(null);
-        } else {
-          console.error("Error fetching narrative", err);
-          setNarrative(null);
-        }
-      } finally {
-        setLoadingNarrative(false);
-      }
-    };
 
-    fetchIntel();
-    fetchNarrative();
-    setDetailTab("info");
+      const fetchIntel = async () => {
+        setLoadingIntel(true);
+        try {
+          const label = encodeURIComponent(selectedAlert.reason);
+          const data = await apiGet<ThreatIntel>(`/threat-intel/${label}`);
+          setThreatIntel(data);
+        } catch (err) {
+          console.error("Error fetching threat intel", err);
+          setThreatIntel(null);
+        } finally {
+          setLoadingIntel(false);
+        }
+      };
+
+      const fetchNarrative = async () => {
+        if (IS_MOCK_MODE) {
+          setNarrative(null);
+          return;
+        }
+        setLoadingNarrative(true);
+        try {
+          const data = await apiGet<NarrativeResponse>(
+            `/narrative/${encodeURIComponent(selectedAlert.anomaly_id)}`,
+          );
+          setNarrative(data);
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 404) {
+            setNarrative(null);
+          } else {
+            console.error("Error fetching narrative", err);
+            setNarrative(null);
+          }
+        } finally {
+          setLoadingNarrative(false);
+        }
+      };
+
+      fetchIntel();
+      fetchNarrative();
+      setDetailTab("info");
+    });
   }, [selectedAlert]);
 
   const handleGenerateNarrative = async () => {
@@ -725,7 +791,7 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, onRefre
           <div>
             <h3 className="text-base font-bold text-foreground">Unable to connect to telemetry grid</h3>
             <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-              We couldn't retrieve the latest infrastructure telemetry. Check the connection and try again.
+              We couldn&apos;t retrieve the latest infrastructure telemetry. Check the connection and try again.
             </p>
           </div>
           <button
@@ -979,7 +1045,7 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, onRefre
                               { name: "Bwd Packet Length Max", weight: 18 },
                               { name: "Flow IAT Mean", weight: 15 },
                             ]
-                        ).map((feat: any, i: number) => (
+                        ).map((feat: FeatureWeight, i: number) => (
                           <div key={i} className="text-xs space-y-1">
                             <div className="flex justify-between text-[10.5px]">
                               <span className="text-muted-foreground">{feat.name}</span>
@@ -1008,7 +1074,7 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, onRefre
                         {threatIntel.related_cves && threatIntel.related_cves.length > 0 && (
                           <div className="space-y-2.5">
                             <span className="text-[9px] uppercase font-bold text-primary tracking-wider block">Related CVE Vulnerabilities</span>
-                            {threatIntel.related_cves.map((cve: any, idx: number) => (
+                            {threatIntel.related_cves.map((cve: CveRecord, idx: number) => (
                               <div key={idx} className="p-3 rounded-xl border border-border bg-white/[0.01] space-y-1 text-xs">
                                 <div className="flex justify-between items-center mb-1">
                                   <a href={cve.source_url} target="_blank" rel="noreferrer" className="font-bold text-foreground hover:underline font-mono text-[11px]">
@@ -1035,7 +1101,7 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, onRefre
                         {threatIntel.cert_in_advisories && threatIntel.cert_in_advisories.length > 0 && (
                           <div className="space-y-2.5">
                             <span className="text-[9px] uppercase font-bold text-cyber-warning tracking-wider block">CERT-In Directives (Gov.IN)</span>
-                            {threatIntel.cert_in_advisories.map((ciad: any, idx: number) => (
+                            {threatIntel.cert_in_advisories.map((ciad: CertInAdvisory, idx: number) => (
                               <div key={idx} className="p-3 rounded-xl border border-border bg-white/[0.01] space-y-1 text-xs">
                                 <div className="flex justify-between items-center mb-1">
                                   <span className="font-bold text-foreground font-mono text-[11px]">
@@ -1221,7 +1287,7 @@ function AlertsQueueScreen({ alerts, onUpdateAlertStatus, onAddAuditLog, onRefre
                           "automated",
                           "success"
                         );
-                        selectedAlert.status = "contained";
+                        setSelectedAlert(prev => prev ? { ...prev, status: "contained" } : null);
                         await onRefreshAudit?.();
                       };
 
@@ -1316,10 +1382,10 @@ function LiveMonitoringScreen({
   onSelectNode,
 }: {
   alerts: AnomalyListItem[];
-  graphData: any;
+  graphData: { nodes: GraphNode[]; links: GraphLink[] } | null;
   loading: boolean;
-  selectedNode: any;
-  onSelectNode: (node: any) => void;
+  selectedNode: GraphNode | null;
+  onSelectNode: (node: GraphNode | null) => void;
 }) {
   return (
     <div className="space-y-8 animate-[fadeInUp_0.5s_ease-out]">
@@ -1595,7 +1661,7 @@ function DigitalTwinScreen() {
 // 5. INCIDENT RESPONSE SCREEN COMPONENT
 // ==========================================
 interface IncidentResponseScreenProps {
-  incidents: any[];
+  incidents: Incident[];
   onResolveIncident: (id: string, actionTaken: "approved" | "dismissed") => void | Promise<void>;
 }
 
@@ -1717,7 +1783,7 @@ function IncidentResponseScreen({ incidents, onResolveIncident }: IncidentRespon
 // ==========================================
 // 6. AUDIT LOGS SCREEN COMPONENT
 // ==========================================
-function AuditLogsScreen({ logs }: { logs: any[] }) {
+function AuditLogsScreen({ logs }: { logs: UIAuditLog[] }) {
   const [filterAgent, setFilterAgent] = useState("all");
 
   const filteredLogs = logs.filter(log => {
