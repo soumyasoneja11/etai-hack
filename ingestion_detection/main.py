@@ -22,7 +22,13 @@ from ingestion_detection.baseline.builder import (
 from ingestion_detection.config import settings
 from ingestion_detection.correlation_forward import forward_detection_to_correlate
 from ingestion_detection.features import derive_entity_id
-from ingestion_detection.predict import ModelNotReadyError, detect_signal, predict_features_list
+from ingestion_detection.predict import (
+    ModelNotReadyError,
+    detect_signal,
+    ensure_model_ready,
+    model_artifacts_status,
+    predict_features_list,
+)
 from ingestion_detection.supabase_store import signal_store
 from shared.auth import ScopedContext, require_admin, require_auth, require_scoped
 from shared.envelope import error_response, success_response
@@ -44,8 +50,34 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app_: FastAPI):
     logger.info("ingestion-detection starting on %s:%s", settings.host, settings.port)
+    # Attempt to load the detector artifacts up front so a missing/corrupt model
+    # is a loud, visible failure rather than a silent 200 with no detection.
+    # Decision: we START the service but mark it UNHEALTHY (health check returns
+    # 503) instead of refusing to boot. This keeps the diagnostic /health
+    # endpoint reachable to report *why* the detector is down and avoids a crash
+    # loop that hides the root cause from orchestrators/logs.
+    try:
+        status = ensure_model_ready()
+        app_.state.model_status = status
+        logger.info(
+            "model loaded: path=%s version=%s features=%s labels=%s",
+            status.get("model_path"),
+            status.get("model_version"),
+            status.get("feature_count"),
+            status.get("label_count"),
+        )
+    except ModelNotReadyError as exc:
+        status = model_artifacts_status()
+        app_.state.model_status = status
+        logger.error(
+            "MODEL_NOT_READY service=ingestion-detection model_path=%s error=%s "
+            "— service is UNHEALTHY; /health will return 503 and scored ingest "
+            "will return 503 until the model artifact is restored",
+            status.get("model_path"),
+            exc,
+        )
     yield
 
 
@@ -73,9 +105,19 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+_STATUS_TO_CODE = {
+    401: "UNAUTHORIZED",
+    403: "FORBIDDEN",
+    404: "NOT_FOUND",
+    422: "VALIDATION_ERROR",
+    429: "RATE_LIMITED",
+    503: "SERVICE_UNAVAILABLE",
+}
+
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    code = "NOT_FOUND" if exc.status_code == 404 else "BAD_REQUEST"
+    code = _STATUS_TO_CODE.get(exc.status_code, "BAD_REQUEST")
     return JSONResponse(
         status_code=exc.status_code,
         content=error_response(code, str(exc.detail)),
@@ -88,7 +130,33 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.get("/health")
 def health():
-    return success_response({"status": "ok", "service": "ingestion-detection"})
+    """Liveness + detector readiness.
+
+    Returns 200 only when the model artifacts are loadable; otherwise 503 with
+    ``model_loaded: false`` and the load error, so orchestrators, the frontend,
+    and the A→B forward path can tell "detector down" from "no threat found".
+    """
+    status = model_artifacts_status()
+    body = {
+        "status": "ok" if status["model_loaded"] else "unhealthy",
+        "service": "ingestion-detection",
+        "model_loaded": status["model_loaded"],
+        "model_path": status.get("model_path"),
+        "model_version": status.get("model_version"),
+        "feature_count": status.get("feature_count"),
+        "label_count": status.get("label_count"),
+        "model_error": status.get("error"),
+    }
+    if not status["model_loaded"]:
+        return JSONResponse(
+            status_code=503,
+            content=error_response(
+                "SERVICE_UNAVAILABLE",
+                status.get("error") or "model not loaded",
+            )
+            | {"data": body},
+        )
+    return success_response(body)
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +341,14 @@ def _ingest_signal(
                 detected_at=normalized.detected_at,
             )
         except ModelNotReadyError as exc:
-            logger.warning("Model not ready, ingest without score: %s", exc)
+            # Do NOT silently return 200 with no detection — that makes a broken
+            # detector look like "no threat found". Fail loud so the caller and
+            # the A→B forward path can distinguish detector-down from benign.
+            logger.error("MODEL_NOT_READY during scored ingest: %s", exc)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Detector model not loaded: {exc}",
+            ) from exc
         except ValueError as exc:
             # Malformed / incomplete features — fail the request (Day 8 edge cases)
             raise HTTPException(status_code=422, detail=str(exc)) from exc

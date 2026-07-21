@@ -33,7 +33,7 @@ class ModelNotReadyError(RuntimeError):
 def _load_model():
     if not MODEL_PATH.exists():
         raise ModelNotReadyError(
-            "model.joblib not found — run: python -m ingestion_detection.train"
+            "model.joblib not found - run: python -m ingestion_detection.train"
         )
     return joblib.load(MODEL_PATH)
 
@@ -41,16 +41,71 @@ def _load_model():
 @lru_cache(maxsize=1)
 def _load_feature_order() -> list[str]:
     if not FEATURE_ORDER_PATH.exists():
-        raise ModelNotReadyError("feature_order.json missing — run preprocess")
+        raise ModelNotReadyError("feature_order.json missing - run preprocess")
     return json.loads(FEATURE_ORDER_PATH.read_text(encoding="utf-8"))
 
 
 @lru_cache(maxsize=1)
 def _load_id_to_label() -> dict[int, str]:
     if not LABEL_MAP_PATH.exists():
-        raise ModelNotReadyError("label_mapping.json missing — run preprocess")
+        raise ModelNotReadyError("label_mapping.json missing - run preprocess")
     data = json.loads(LABEL_MAP_PATH.read_text(encoding="utf-8"))
     return {int(k): v for k, v in data["id_to_label"].items()}
+
+
+def _model_version() -> str | None:
+    """Cheap, deterministic version tag derived from the artifact on disk."""
+    if not MODEL_PATH.exists():
+        return None
+    stat = MODEL_PATH.stat()
+    return f"{stat.st_size}-{int(stat.st_mtime)}"
+
+
+def model_artifacts_status() -> dict:
+    """Report whether the detector's artifacts are loadable.
+
+    Never raises — intended for health checks and startup diagnostics. Returns a
+    dict with ``model_loaded`` and, on failure, a human-readable ``error``.
+    """
+    status: dict = {
+        "model_loaded": False,
+        "model_path": str(MODEL_PATH),
+        "model_version": _model_version(),
+        "error": None,
+    }
+    try:
+        _load_model()
+    except Exception as exc:  # noqa: BLE001 — surface any load failure verbatim
+        status["error"] = f"model.joblib: {exc}"
+        return status
+
+    try:
+        order = _load_feature_order()
+        status["feature_count"] = len(order)
+    except Exception as exc:  # noqa: BLE001
+        status["error"] = f"feature_order.json: {exc}"
+        return status
+
+    try:
+        labels = _load_id_to_label()
+        status["label_count"] = len(labels)
+    except Exception as exc:  # noqa: BLE001
+        status["error"] = f"label_mapping.json: {exc}"
+        return status
+
+    status["model_loaded"] = True
+    return status
+
+
+def ensure_model_ready() -> dict:
+    """Load all detector artifacts, raising ModelNotReadyError if any fail.
+
+    Used at startup so a missing/corrupt model is a loud, visible failure.
+    """
+    status = model_artifacts_status()
+    if not status["model_loaded"]:
+        raise ModelNotReadyError(status["error"] or "model artifacts not loadable")
+    return status
 
 
 def features_dict_to_vector(features: dict[str, float]) -> pd.DataFrame:

@@ -1,15 +1,34 @@
-# Install everything: pip install -e .
-pandas>=2.2
-matplotlib>=3.9
-seaborn>=0.13
-fastapi>=0.115
-uvicorn[standard]>=0.32
-httpx>=0.28
-pydantic>=2.10
-pydantic-settings>=2.6
-numpy>=2.1
-scikit-learn>=1.5
-neo4j>=5.20
-supabase>=2.0
-python-jose[cryptography]>=3.3
-google-generativeai>=0.8
+# ============================================================
+# CyberShield NIC — runtime dependency lock
+# ============================================================
+# SOURCE OF TRUTH: pyproject.toml declares the abstract dependencies
+# (lower-bound ranges). This file is the *generated, fully-pinned* deployment
+# lock derived from a known-good resolved environment, so
+# `pip install -r requirements.txt` is reproducible and can never drift from
+# pyproject (previously it silently omitted lightgbm/joblib/pyarrow/openpyxl,
+# which made the LightGBM model.joblib fail to load at runtime).
+#
+# To regenerate after changing pyproject.toml:
+#   pip install -e .            # resolve from pyproject
+#   pip freeze | ...            # or: pip-compile pyproject.toml -o requirements.txt
+# Every package below MUST also appear in pyproject.toml [project.dependencies].
+# ============================================================
+
+pandas==2.3.0
+matplotlib==3.10.3
+seaborn==0.13.2
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+httpx==0.28.1
+pydantic==2.11.7
+pydantic-settings==2.10.1
+numpy==2.3.0
+scikit-learn==1.7.0
+lightgbm==4.6.0
+joblib==1.5.1
+pyarrow==24.0.0
+openpyxl==3.1.5
+neo4j==6.2.0
+supabase==2.31.0
+python-jose[cryptography]==3.5.0
+google-generativeai==0.8.6
