@@ -14,13 +14,23 @@ export const REFRESH_COOKIE = "cs_refresh";
 
 /** Resolve Supabase URL + anon key from server env (NEXT_PUBLIC_* also work). */
 export function supabaseServerConfig(): { url: string; anonKey: string } {
-  const url =
-    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const anonKey =
+  let url = (
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""
+  ).trim();
+
+  // Strip trailing slashes and redundant /auth/v1 path segments if user pasted full auth URL
+  url = url.replace(/\/$/, "");
+  if (url.endsWith("/auth/v1")) {
+    url = url.slice(0, -"/auth/v1".length).replace(/\/$/, "");
+  }
+
+  const anonKey = (
     process.env.SUPABASE_ANON_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-    "";
-  return { url: url.replace(/\/$/, ""), anonKey };
+    ""
+  ).trim();
+
+  return { url, anonKey };
 }
 
 /** Cookie attributes for the refresh token (pass maxAge 0 to delete). */
