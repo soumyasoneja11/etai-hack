@@ -28,8 +28,7 @@ services:
         value: "https://cybershield-correlation.onrender.com"
       - key: CORRELATION_FORWARD_ENABLED
         value: "true"
-    envVarGroups:
-      - name: cybershield-secrets
+      - fromGroup: cybershield-secrets
 
   # -----------------------------------------------------------------------
   # Service B — Correlation & Response (port 8001)
@@ -52,8 +51,7 @@ services:
         value: INFO
       - key: APP_MODULE
         value: "correlation_response.main:app"
-    envVarGroups:
-      - name: cybershield-secrets
+      - fromGroup: cybershield-secrets
 
 # -----------------------------------------------------------------------
 # Environment Group — Render prompts for these secrets during Blueprint setup
