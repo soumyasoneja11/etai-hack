@@ -16,7 +16,7 @@ services:
     environment:
       HOST: "0.0.0.0"
       PORT: "8000"
-      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-2}"
+      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-1}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000}"
       # A -> B handoff target on the internal compose network.
@@ -47,7 +47,7 @@ services:
     environment:
       HOST: "0.0.0.0"
       PORT: "8001"
-      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-2}"
+      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-1}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000}"
     ports:

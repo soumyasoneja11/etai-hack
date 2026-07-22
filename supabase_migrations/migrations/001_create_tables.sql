@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS signals (
 ALTER TABLE signals ENABLE ROW LEVEL SECURITY;
 
 -- Admin: full access
+DROP POLICY IF EXISTS signals_admin_all ON signals;
 CREATE POLICY signals_admin_all ON signals
     FOR ALL
     USING (
@@ -32,11 +33,13 @@ CREATE POLICY signals_admin_all ON signals
     );
 
 -- Regular user: can INSERT their own rows
+DROP POLICY IF EXISTS signals_user_insert ON signals;
 CREATE POLICY signals_user_insert ON signals
     FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
 -- Regular user: can SELECT only their own rows
+DROP POLICY IF EXISTS signals_user_select ON signals;
 CREATE POLICY signals_user_select ON signals
     FOR SELECT
     USING (auth.uid() = user_id);
@@ -66,16 +69,19 @@ CREATE TABLE IF NOT EXISTS anomalies (
 
 ALTER TABLE anomalies ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS anomalies_admin_all ON anomalies;
 CREATE POLICY anomalies_admin_all ON anomalies
     FOR ALL
     USING (
         (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
     );
 
+DROP POLICY IF EXISTS anomalies_user_insert ON anomalies;
 CREATE POLICY anomalies_user_insert ON anomalies
     FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS anomalies_user_select ON anomalies;
 CREATE POLICY anomalies_user_select ON anomalies
     FOR SELECT
     USING (auth.uid() = user_id);
@@ -99,16 +105,19 @@ CREATE TABLE IF NOT EXISTS attributions (
 
 ALTER TABLE attributions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS attributions_admin_all ON attributions;
 CREATE POLICY attributions_admin_all ON attributions
     FOR ALL
     USING (
         (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
     );
 
+DROP POLICY IF EXISTS attributions_user_insert ON attributions;
 CREATE POLICY attributions_user_insert ON attributions
     FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS attributions_user_select ON attributions;
 CREATE POLICY attributions_user_select ON attributions
     FOR SELECT
     USING (auth.uid() = user_id);

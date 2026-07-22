@@ -40,5 +40,5 @@ EXPOSE 8000 8001
 
 # Default command runs service A; compose overrides it for service B. Both bind
 # $PORT via deploy/gunicorn_conf.py.
-ENV PORT=8000 WEB_CONCURRENCY=2
+ENV PORT=8000 WEB_CONCURRENCY=1
 CMD ["gunicorn", "ingestion_detection.main:app", "-c", "deploy/gunicorn_conf.py"]

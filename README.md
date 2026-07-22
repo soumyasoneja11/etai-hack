@@ -62,14 +62,82 @@ supabase_migrations/migrations/   # DB schema
 
 ### Supabase migrations
 
-Apply SQL files in order via the Supabase SQL Editor (Dashboard → SQL). Schema-only; no secrets.
+Apply **all** SQL files in order via the Supabase SQL Editor (Dashboard → SQL). Schema-only; no secrets.
+A combined file is also available at `scripts/apply_migrations_combined.sql` for one-shot apply.
 
 | File | Purpose |
 |------|---------|
-| `001_create_tables.sql` | signals, anomalies, attributions |
-| `002_threat_intel.sql` | threat intel corpus |
+| `001_create_tables.sql` | signals, anomalies, attributions + RLS |
+| `002_threat_intel.sql` | threat intel corpus table (currently unused — see note in file) |
 | `003_audit_soar.sql` | audit_logs, soar_actions |
 | `004_anomaly_narrative.sql` | `anomalies.narrative` JSONB (persisted RAG text) |
+| `005_app_metadata_roles.sql` | Re-keys admin RLS to `app_metadata` (prevents self-promotion) |
+| `006_anomaly_decision.sql` | `anomalies.decision` JSONB (correlate-time recommendation) |
+| `007_anomaly_update_policy.sql` | UPDATE RLS policy for anomalies (review approve/reject) |
+
+> **Important:** Apply `001`–`007` in order. Skipping `006`/`007` will cause `/correlate` and review endpoints to fail.
+
+### Admin provisioning
+
+After applying migrations and creating a user (via the login page or Supabase Auth API), promote them to admin:
+
+```sql
+-- Run in Supabase SQL Editor with service-role key
+UPDATE auth.users
+SET raw_app_meta_data = raw_app_meta_data || '{"role": "admin"}'::jsonb
+WHERE email = 'your-admin@example.com';
+```
+
+A full template is at `scripts/provision_admin.sql`. Keep signup closed (blank `SIGNUP_INVITE_TOKEN`) or set an invite token.
+
+## Backend data bootstrap
+
+### What's committed (API boots without CSVs)
+
+The API only needs these committed artifacts to start and serve predictions:
+
+| Artifact | Path | Size |
+|----------|------|------|
+| LightGBM model | `ingestion_detection/models/model.joblib` | ~12.7 MB |
+| Baseline profiles | `ingestion_detection/models/baseline_profiles.json` | ~271 KB |
+| Feature order | `ingestion_detection/models/feature_order.json` | ~1.7 KB |
+| Label mapping | `ingestion_detection/models/label_mapping.json` | ~450 B |
+| Threat intel corpus | `data/threat_intel/corpus.json` | ~22 KB |
+
+No CICIDS2017 CSVs are needed for the API to boot, serve `/health` 200, or process ingest requests.
+
+### CICIDS2017 CSVs (for replay / retraining only)
+
+Place these four files in `data/` (git-ignored):
+
+- `Wednesday-workingHours.pcap_ISCX.csv`
+- `Friday-WorkingHours-Morning.pcap_ISCX.csv`
+- `Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv`
+- `Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv`
+
+Download from the [CICIDS2017 dataset](https://www.unb.ca/cic/datasets/ids-2017.html) or copy from a teammate.
+
+### Rebuild / retrain workflow
+
+```bash
+pip install -e .
+
+# 1. EDA (optional — generates plots in reports/)
+python scripts/eda.py
+
+# 2. Preprocess: clean, merge, feature matrix, train/test split
+python -m ingestion_detection.preprocess
+# → creates data/processed/{X_train,X_test,y_train,y_test}.parquet
+
+# 3. Train: Random Forest + LightGBM, saves best model
+python -m ingestion_detection.train
+# → saves ingestion_detection/models/model.joblib
+# → saves ingestion_detection/models/model_provenance.json
+
+# 4. Build baselines (PortScan BENIGN rows)
+python -m ingestion_detection.baseline.builder
+# → saves ingestion_detection/models/baseline_profiles.json
+```
 
 ## Model results
 
