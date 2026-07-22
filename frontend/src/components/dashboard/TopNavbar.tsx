@@ -23,9 +23,13 @@ export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
   const router = useRouter();
   const [currentTime, setCurrentTime] = useState("");
   const [showProfile, setShowProfile] = useState(false);
-  const [theme, setTheme] = useState(() =>
-    typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light"
-  );
+  const [theme, setTheme] = useState("dark");
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
+    });
+  }, []);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
