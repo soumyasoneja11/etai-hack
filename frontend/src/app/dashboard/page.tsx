@@ -2039,11 +2039,7 @@ function readSessionIdentity(): SessionIdentity {
 }
 
 function ProfileSettingsScreen() {
-  const [identity, setIdentity] = useState<SessionIdentity>({ email: null, role: null });
-
-  useEffect(() => {
-    setIdentity(readSessionIdentity());
-  }, []);
+  const [identity] = useState<SessionIdentity>(readSessionIdentity);
 
   const initials = identity.email
     ? identity.email.slice(0, 2).toUpperCase()

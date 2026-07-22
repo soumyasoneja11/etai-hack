@@ -23,7 +23,9 @@ export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
   const router = useRouter();
   const [currentTime, setCurrentTime] = useState("");
   const [showProfile, setShowProfile] = useState(false);
-  const [theme, setTheme] = useState("light");
+  const [theme, setTheme] = useState(() =>
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light"
+  );
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -64,9 +66,7 @@ export function TopNavbar({ onToggleSidebar }: TopNavbarProps) {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
-  }, []);
+
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-sidebar px-4 lg:px-6">
