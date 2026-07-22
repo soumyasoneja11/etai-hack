@@ -18,8 +18,15 @@ bind = f"{os.getenv('HOST', '0.0.0.0')}:{os.getenv('PORT', '8000')}"
 
 # ASGI: uvicorn workers under gunicorn's process manager (graceful restarts,
 # multiple workers) instead of a single-process uvicorn.run().
+#
+# DEPRECATION NOTICE (Y8): uvicorn.workers.UvicornWorker has been deprecated
+# since uvicorn 0.30. It still imports cleanly on the pinned uvicorn==0.35.0.
+# Once the project upgrades to uvicorn >= 0.36, switch to the standalone
+# `uvicorn-worker` package:
+#   pip install uvicorn-worker
+#   worker_class = "uvicorn_worker.UvicornWorker"
 worker_class = "uvicorn.workers.UvicornWorker"
-workers = int(os.getenv("WEB_CONCURRENCY", "2"))
+workers = int(os.getenv("WEB_CONCURRENCY", "1"))
 
 timeout = int(os.getenv("GUNICORN_TIMEOUT", "60"))
 graceful_timeout = int(os.getenv("GUNICORN_GRACEFUL_TIMEOUT", "30"))

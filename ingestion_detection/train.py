@@ -134,18 +134,40 @@ def train_and_evaluate() -> dict:
     model_path = MODELS_DIR / "model.joblib"
     joblib.dump(best_model, model_path)
 
+    # ---- Model provenance (Y4) ----
+    import platform
+    import sklearn
+    import lightgbm as lgb_mod
+
+    provenance = {
+        "python_version": platform.python_version(),
+        "scikit_learn_version": sklearn.__version__,
+        "lightgbm_version": lgb_mod.__version__,
+        "numpy_version": np.__version__,
+        "pandas_version": pd.__version__,
+        "joblib_version": joblib.__version__,
+        "trained_at": pd.Timestamp.utcnow().isoformat(),
+    }
+
     summary = {
         "best_model": best_name,
         "best_f1_macro": best_f1,
         "models": all_metrics,
+        "provenance": provenance,
     }
     (REPORTS_DIR / "metrics_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     (MODELS_DIR / "best_model.json").write_text(
         json.dumps({"name": best_name, "path": str(model_path)}, indent=2),
         encoding="utf-8",
     )
+    (MODELS_DIR / "model_provenance.json").write_text(
+        json.dumps(provenance, indent=2), encoding="utf-8",
+    )
     print(f"Best model: {best_name} (f1_macro={best_f1:.4f})")
     print(f"Saved: {model_path}")
+    print(f"Provenance: sklearn={provenance['scikit_learn_version']}, "
+          f"lgbm={provenance['lightgbm_version']}, "
+          f"numpy={provenance['numpy_version']}")
     return summary
 
 

@@ -7,7 +7,7 @@ from typing import Literal
 Severity = Literal["low", "medium", "high", "critical"]
 AnomalyStatus = Literal["new", "investigating", "acknowledged", "contained", "false_positive"]
 ActionStatus = Literal["pending", "approved", "escalated", "rejected", "executed", "failed"]
-ActionType = Literal["isolate_endpoint", "revoke_credential", "block_ip", "snapshot_vm"]
+ActionType = Literal["isolate_endpoint", "revoke_credential", "block_ip"]
 # Canonical MITRE ATT&CK Enterprise tactics in snake_case. This is the single
 # source of truth for the tactic vocabulary; `mitre_tactic` is always persisted
 # in this form (see normalize_tactic + correlate.py). "unknown" is emitted for

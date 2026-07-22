@@ -1,4 +1,9 @@
 -- Threat intelligence corpus seed table for CVE and CERT-In documents.
+--
+-- NOTE (Y6): This table is currently UNUSED by the application. The threat
+-- intel code reads from `data/threat_intel/corpus.json` instead.  This
+-- migration is kept for potential future use (e.g. Supabase-backed threat
+-- intel search).  No application code queries this table as of 2026-07-22.
 
 create table if not exists public.threat_intel_docs (
     doc_id text primary key,

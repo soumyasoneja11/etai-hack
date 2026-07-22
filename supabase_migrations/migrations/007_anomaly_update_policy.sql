@@ -10,6 +10,7 @@
 -- Run in Supabase SQL Editor (Dashboard -> SQL -> New query).
 
 -- Allow users to UPDATE their own anomaly rows
+DROP POLICY IF EXISTS anomalies_user_update ON anomalies;
 CREATE POLICY anomalies_user_update ON anomalies
     FOR UPDATE
     USING (auth.uid() = user_id)

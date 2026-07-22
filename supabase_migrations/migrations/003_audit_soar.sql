@@ -22,16 +22,19 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS audit_logs_admin_all ON audit_logs;
 CREATE POLICY audit_logs_admin_all ON audit_logs
     FOR ALL
     USING (
         (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
     );
 
+DROP POLICY IF EXISTS audit_logs_user_insert ON audit_logs;
 CREATE POLICY audit_logs_user_insert ON audit_logs
     FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS audit_logs_user_select ON audit_logs;
 CREATE POLICY audit_logs_user_select ON audit_logs
     FOR SELECT
     USING (auth.uid() = user_id);
@@ -46,7 +49,7 @@ CREATE TABLE IF NOT EXISTS soar_actions (
     action_id       TEXT UNIQUE NOT NULL,
     anomaly_id      TEXT REFERENCES anomalies(anomaly_id) ON DELETE SET NULL,
     action_type     TEXT NOT NULL CHECK (action_type IN (
-        'isolate_endpoint', 'revoke_credential', 'block_ip', 'snapshot_vm'
+        'isolate_endpoint', 'revoke_credential', 'block_ip'
     )),
     target          TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
@@ -61,16 +64,19 @@ CREATE TABLE IF NOT EXISTS soar_actions (
 
 ALTER TABLE soar_actions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS soar_actions_admin_all ON soar_actions;
 CREATE POLICY soar_actions_admin_all ON soar_actions
     FOR ALL
     USING (
         (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
     );
 
+DROP POLICY IF EXISTS soar_actions_user_insert ON soar_actions;
 CREATE POLICY soar_actions_user_insert ON soar_actions
     FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS soar_actions_user_select ON soar_actions;
 CREATE POLICY soar_actions_user_select ON soar_actions
     FOR SELECT
     USING (auth.uid() = user_id);
