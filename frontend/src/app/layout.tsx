@@ -52,8 +52,9 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} ${ibmPlexSans.variable} dark antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-screen bg-background text-foreground">
+      <body className="min-h-screen bg-background text-foreground" suppressHydrationWarning>
         <TooltipProvider delay={200}>
           {children}
         </TooltipProvider>
