@@ -12,7 +12,6 @@ services:
     dockerContext: .
     plan: free
     healthCheckPath: /health
-    dockerCommand: gunicorn ingestion_detection.main:app -c deploy/gunicorn_conf.py
     envVars:
       - key: PORT
         value: "8000"
@@ -22,6 +21,8 @@ services:
         value: "1"
       - key: LOG_LEVEL
         value: INFO
+      - key: APP_MODULE
+        value: "ingestion_detection.main:app"
       # A → B forwarding: set to Service B's public Render URL once deployed.
       - key: CORRELATION_BASE_URL
         value: "https://cybershield-correlation.onrender.com"
@@ -40,7 +41,6 @@ services:
     dockerContext: .
     plan: free
     healthCheckPath: /health
-    dockerCommand: gunicorn correlation_response.main:app -c deploy/gunicorn_conf.py
     envVars:
       - key: PORT
         value: "8001"
@@ -50,6 +50,8 @@ services:
         value: "1"
       - key: LOG_LEVEL
         value: INFO
+      - key: APP_MODULE
+        value: "correlation_response.main:app"
     envVarGroups:
       - name: cybershield-secrets
 
